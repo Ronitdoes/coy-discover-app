@@ -1,4 +1,4 @@
-/* eslint-disable @next/next/no-img-element -- placeholder portraits are loaded from randomuser.me; a gradient + initials fallback renders when the network is unavailable. */
+/* eslint-disable @next/next/no-img-element -- local portrait files are rendered directly; a pastel + initials fallback covers missing or broken images. */
 "use client";
 
 import { useState } from "react";
@@ -22,7 +22,7 @@ function initialsOf(name: string) {
 }
 
 /**
- * Remote placeholder photo with a graceful gradient-initials fallback.
+ * Local portrait photo with a graceful pastel-initials fallback.
  * Falls back on error, and also when the URL is empty.
  */
 export function Avatar({
@@ -38,9 +38,9 @@ export function Avatar({
       <div
         aria-label={`${name}'s photo`}
         role="img"
-        className={`flex items-center justify-center bg-gradient-to-br from-rose-400 via-rose-500 to-fuchsia-600 font-black text-white ${fallbackTextClassName} ${className}`}
+        className={`flex items-center justify-center bg-gradient-to-br from-lavender via-blush to-mint font-black text-ink ${fallbackTextClassName} ${className}`}
       >
-        <span className="leading-none tracking-tight">{initialsOf(name)}</span>
+        <span className="leading-none tracking-[-0.04em]">{initialsOf(name)}</span>
       </div>
     );
   }

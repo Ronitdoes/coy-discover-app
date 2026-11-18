@@ -12,8 +12,8 @@ export function AppShell() {
   const [tab, setTab] = useState<Tab>("discover");
 
   return (
-    <div className="flex min-h-dvh justify-center bg-stone-100 sm:items-center sm:p-6">
-      <div className="relative flex h-dvh w-full max-w-md flex-col overflow-hidden bg-white sm:h-[calc(100dvh-3rem)] sm:max-h-[900px] sm:rounded-[2.25rem] sm:shadow-2xl sm:ring-1 sm:ring-stone-900/10">
+    <div className="flex h-dvh justify-center overflow-hidden bg-white text-ink">
+      <div className="flex h-full w-full max-w-[620px] flex-col">
         <main className="relative min-h-0 flex-1 overflow-hidden">
           {tab === "home" ? <HomeTab /> : <DiscoverTab />}
         </main>

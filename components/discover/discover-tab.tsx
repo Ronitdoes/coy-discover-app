@@ -5,7 +5,8 @@ import { useCallback, useEffect, useState } from "react";
 import { MatchOverlay } from "@/components/discover/match-overlay";
 import { MatchesView } from "@/components/discover/matches-view";
 import { SwipeDeck } from "@/components/discover/swipe-deck";
-import { CheckIcon, HeartFilledIcon } from "@/components/icons";
+import { HeartFilledIcon } from "@/components/icons";
+import { Wordmark } from "@/components/wordmark";
 import type {
   FeedResponse,
   Match,
@@ -123,7 +124,7 @@ export function DiscoverTab() {
   }, []);
 
   return (
-    <section className="flex h-full flex-col bg-white" aria-label="Discover">
+    <section className="flex h-full min-h-0 flex-col bg-white" aria-label="Discover">
       {view === "matches" ? (
         <MatchesView
           matches={matches}
@@ -132,41 +133,43 @@ export function DiscoverTab() {
         />
       ) : (
         <>
-          <header className="flex items-center justify-between gap-3 px-4 pb-1 pt-4">
-            <div className="min-w-0">
-              <h1 className="text-xl font-bold tracking-tight text-stone-900">
-                Discover
-              </h1>
-              <p className="mt-0.5 truncate text-xs text-stone-400">
-                Swipe right to like · left to pass
-              </p>
-            </div>
+          <header className="flex shrink-0 items-center justify-between gap-3 px-5 pb-3 pt-[max(1.25rem,env(safe-area-inset-top))] sm:px-8">
+            <Wordmark className="text-[31px]" />
             <button
               type="button"
               onClick={() => setView("matches")}
-              className="flex shrink-0 items-center gap-1.5 rounded-full bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-600 transition hover:bg-rose-100"
+              aria-label={
+                matches.length > 0
+                  ? `View your ${matches.length} ${
+                      matches.length === 1 ? "match" : "matches"
+                    }`
+                  : "View your matches"
+              }
+              className="coy-btn relative h-11 w-11 shrink-0 bg-lavender p-0 text-coy-pink hover:bg-white"
             >
-              <HeartFilledIcon className="h-4 w-4" />
-              Matches
+              <HeartFilledIcon className="h-5 w-5" />
               {matches.length > 0 ? (
-                <span className="ml-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[11px] font-bold text-white">
+                <span
+                  aria-hidden
+                  className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-ink bg-coy-pink px-1 text-[10px] font-extrabold leading-none text-white"
+                >
                   {matches.length}
                 </span>
               ) : null}
             </button>
           </header>
 
-          <div className="flex min-h-0 flex-1 flex-col px-4 pb-3">
+          <div className="flex min-h-0 flex-1 flex-col px-5 pb-2 sm:px-8">
             {swipeError ? (
               <div
                 role="alert"
-                className="mb-2 flex items-center justify-between gap-2 rounded-xl bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700"
+                className="mb-2.5 flex items-center justify-between gap-2 rounded-2xl border-2 border-ink bg-blush px-3 py-2 text-[12px] font-bold text-ink shadow-[2px_2px_0_0_var(--color-ink)]"
               >
                 <span>{swipeError}</span>
                 <button
                   type="button"
                   onClick={() => setSwipeError(null)}
-                  className="shrink-0 font-semibold underline underline-offset-2"
+                  className="shrink-0 text-coy-pink underline underline-offset-2"
                 >
                   Dismiss
                 </button>
@@ -207,20 +210,27 @@ export function DiscoverTab() {
 function DeckSkeleton() {
   return (
     <div className="flex h-full flex-col" aria-hidden>
-      <div className="relative min-h-0 flex-1">
-        <div className="absolute inset-0 animate-pulse rounded-[2rem] bg-stone-100" />
-        <div className="absolute inset-x-0 bottom-0 space-y-3 p-5">
-          <div className="h-6 w-32 animate-pulse rounded-full bg-stone-200" />
-          <div className="h-3 w-44 animate-pulse rounded-full bg-stone-200" />
-          <div className="h-3 w-full animate-pulse rounded-full bg-stone-200" />
-          <div className="h-3 w-4/5 animate-pulse rounded-full bg-stone-200" />
+      <div className="min-h-0 flex-1">
+        <div className="coy-card flex h-full w-full flex-col bg-lavender p-3">
+          <div className="min-h-0 flex-1 animate-pulse rounded-[20px] border-2 border-ink/15 bg-white/70" />
+          <div className="shrink-0 space-y-2.5 px-2 pb-2 pt-4">
+            <div className="h-6 w-36 animate-pulse rounded-full bg-ink/10" />
+            <div className="h-3 w-44 animate-pulse rounded-full bg-ink/10" />
+            <div className="h-3 w-full animate-pulse rounded-full bg-ink/10" />
+            <div className="flex gap-1.5 pt-1">
+              <div className="h-5 w-16 animate-pulse rounded-full bg-white/70" />
+              <div className="h-5 w-14 animate-pulse rounded-full bg-white/70" />
+              <div className="h-5 w-12 animate-pulse rounded-full bg-white/70" />
+            </div>
+          </div>
         </div>
       </div>
-      <div className="mt-4 flex items-center justify-center gap-7">
-        <div className="h-16 w-16 animate-pulse rounded-full bg-stone-100" />
-        <div className="h-16 w-16 animate-pulse rounded-full bg-stone-100" />
+
+      <div className="mt-4 flex items-center justify-center gap-5">
+        <div className="h-16 w-16 animate-pulse rounded-full border-2 border-ink/15 bg-lavender-soft" />
+        <div className="h-16 w-16 animate-pulse rounded-full border-2 border-ink/15 bg-blush" />
       </div>
-      <div className="mt-2.5 h-3 w-24 animate-pulse rounded-full bg-stone-100 mx-auto" />
+      <div className="mx-auto mt-3 h-3 w-28 animate-pulse rounded-full bg-ink/10" />
     </div>
   );
 }
@@ -233,46 +243,55 @@ function ErrorState({
   onRetry: () => void;
 }) {
   return (
-    <div className="flex h-full flex-col items-center justify-center px-6 text-center">
-      <span className="flex h-16 w-16 items-center justify-center rounded-full bg-rose-50">
-        <HeartFilledIcon className="h-7 w-7 text-rose-400" />
-      </span>
-      <h2 className="mt-5 text-base font-semibold text-stone-900">
-        Couldn&rsquo;t load Discover
-      </h2>
-      <p className="mt-1.5 max-w-[17rem] text-sm leading-relaxed text-stone-500">
-        {message ?? "Check your connection and try again."}
-      </p>
-      <button
-        type="button"
-        onClick={onRetry}
-        className="mt-6 rounded-full bg-stone-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-stone-800 active:scale-[0.98]"
-      >
-        Try again
-      </button>
+    <div className="no-scrollbar h-full overflow-y-auto">
+      <div className="flex min-h-full items-center justify-center py-2">
+        <div className="coy-card w-full max-w-[440px] bg-blush px-6 py-8 text-center sm:px-8">
+          <span aria-hidden className="text-4xl">
+            🙈
+          </span>
+          <h2 className="mt-3 text-[25px] font-black leading-tight tracking-[-0.04em] text-ink">
+            Couldn&rsquo;t load Discover
+          </h2>
+          <p className="mx-auto mt-2 max-w-[19rem] text-[13px] font-medium leading-relaxed text-ink/60">
+            {message ?? "Check your connection and try again."}
+          </p>
+          <button
+            type="button"
+            onClick={onRetry}
+            className="coy-btn mt-6 bg-coy-pink px-6 py-3 text-[14px] text-white hover:bg-coy-pink-dark"
+          >
+            Try again
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
 
 function EmptyState({ onViewMatches }: { onViewMatches: () => void }) {
   return (
-    <div className="flex h-full flex-col items-center justify-center px-6 text-center">
-      <span className="flex h-20 w-20 items-center justify-center rounded-full bg-rose-50">
-        <CheckIcon className="h-9 w-9 text-rose-500" strokeWidth={2.5} />
-      </span>
-      <h2 className="mt-6 text-xl font-bold tracking-tight text-stone-900">
-        You&rsquo;re all caught up
-      </h2>
-      <p className="mt-2 max-w-[17rem] text-sm leading-relaxed text-stone-500">
-        You&rsquo;ve seen everyone nearby. Check back later for new people.
-      </p>
-      <button
-        type="button"
-        onClick={onViewMatches}
-        className="mt-7 rounded-full bg-stone-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-stone-800 active:scale-[0.98]"
-      >
-        View matches
-      </button>
+    <div className="no-scrollbar h-full overflow-y-auto">
+      <div className="flex min-h-full items-center justify-center py-2">
+        <div className="coy-card w-full max-w-[440px] bg-lavender px-6 py-8 text-center sm:px-8">
+          <span aria-hidden className="text-4xl">
+            👀
+          </span>
+          <h2 className="mt-3 text-[26px] font-black leading-tight tracking-[-0.04em] text-ink">
+            That&rsquo;s everyone for now
+          </h2>
+          <p className="mx-auto mt-2 max-w-[19rem] text-[13px] font-medium leading-relaxed text-ink/60">
+            You&rsquo;ve seen every profile nearby. New crushes will show up
+            here — and your likes stay private until they&rsquo;re mutual.
+          </p>
+          <button
+            type="button"
+            onClick={onViewMatches}
+            className="coy-btn mt-6 bg-coy-pink px-6 py-3 text-[14px] text-white hover:bg-coy-pink-dark"
+          >
+            See your matches
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

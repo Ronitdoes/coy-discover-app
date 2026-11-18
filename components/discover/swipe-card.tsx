@@ -1,7 +1,7 @@
 "use client";
 
 import { Avatar } from "@/components/avatar";
-import { MapPinIcon } from "@/components/icons";
+import { HeartFilledIcon, MapPinIcon, XIcon } from "@/components/icons";
 import type { Profile } from "@/lib/types";
 
 interface SwipeCardProps {
@@ -12,8 +12,16 @@ interface SwipeCardProps {
   stamp?: "like" | "pass";
 }
 
+const PROFILE_TONES = ["bg-lavender", "bg-mint", "bg-blush"] as const;
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function toneFor(id: string) {
+  const number = Number.parseInt(id.replace(/\D/g, ""), 10);
+  const index = Number.isFinite(number) ? Math.max(0, number - 1) : 0;
+  return PROFILE_TONES[index % PROFILE_TONES.length];
 }
 
 export function SwipeCard({ profile, dragX = 0, stamp }: SwipeCardProps) {
@@ -23,67 +31,70 @@ export function SwipeCard({ profile, dragX = 0, stamp }: SwipeCardProps) {
   return (
     <article
       aria-label={`${profile.name}, ${profile.age}, ${profile.city}`}
-      className="relative h-full w-full select-none overflow-hidden rounded-[2rem] bg-stone-200 shadow-[0_20px_50px_-16px_rgba(28,25,23,0.5)]"
+      className={`coy-card relative flex h-full w-full select-none flex-col overflow-hidden ${toneFor(profile.id)}`}
     >
-      <Avatar
-        src={profile.photo}
-        name={profile.name}
-        className="absolute inset-0 h-full w-full object-cover"
-        fallbackTextClassName="text-7xl"
-      />
-      <div className="absolute inset-0 bg-gradient-to-t from-stone-950/90 via-stone-950/25 to-stone-950/5" />
+      <div className="relative min-h-0 flex-1 p-3 pb-0">
+        <div className="relative h-full w-full overflow-hidden rounded-[20px] border-2 border-ink bg-gradient-to-br from-lavender via-blush to-mint">
+          <Avatar
+            src={profile.photo}
+            name={profile.name}
+            className="h-full w-full object-cover"
+            fallbackTextClassName="text-7xl"
+          />
 
-      <div className="absolute inset-x-0 bottom-0 p-5 text-white [text-shadow:0_1px_16px_rgba(0,0,0,0.35)]">
-        <div className="flex items-end gap-2">
-          <h2 className="text-[26px] font-semibold leading-none">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute left-3 top-4 flex -rotate-12 items-center gap-1.5 rounded-xl border-[3px] border-ink bg-white px-3 py-1 text-[17px] font-black uppercase tracking-[0.08em] text-coy-pink shadow-[3px_3px_0_0_var(--color-ink)]"
+            style={{ opacity: likeOpacity }}
+          >
+            <HeartFilledIcon className="h-4 w-4" />
+            Like
+          </div>
+
+          <div
+            aria-hidden
+            className="pointer-events-none absolute right-3 top-4 flex rotate-12 items-center gap-1.5 rounded-xl border-[3px] border-ink bg-white px-3 py-1 text-[17px] font-black uppercase tracking-[0.08em] text-ink shadow-[3px_3px_0_0_var(--color-ink)]"
+            style={{ opacity: passOpacity }}
+          >
+            <XIcon className="h-4 w-4" strokeWidth={3} />
+            Nope
+          </div>
+        </div>
+      </div>
+
+      <div className="shrink-0 px-5 pb-4 pt-3">
+        <div className="flex min-w-0 items-baseline gap-1">
+          <h2 className="min-w-0 truncate text-[28px] font-black leading-none tracking-[-0.045em] text-ink">
             {profile.name}
+            <span aria-hidden>,</span>
           </h2>
-          <span className="pb-px text-xl font-light text-white/90">
+          <span className="shrink-0 text-[20px] font-bold leading-none text-ink/40">
             {profile.age}
           </span>
         </div>
 
-        <p className="mt-1.5 flex items-center gap-1 text-[13px] text-white/80">
-          <MapPinIcon className="h-3.5 w-3.5 shrink-0" />
-          <span className="shrink-0">{profile.city}</span>
-          {profile.college ? (
-            <>
-              <span className="px-0.5 text-white/50">·</span>
-              <span className="min-w-0 truncate">{profile.college}</span>
-            </>
-          ) : null}
+        <p className="mt-1.5 flex min-w-0 items-center gap-1 text-[12px] font-semibold text-ink/60">
+          <MapPinIcon className="h-3.5 w-3.5 shrink-0 text-coy-pink" />
+          <span className="truncate">
+            {profile.city}
+            {profile.college ? ` · ${profile.college}` : ""}
+          </span>
         </p>
 
-        <p className="mt-2.5 line-clamp-3 text-sm leading-snug text-white/90">
+        <p className="mt-2 line-clamp-2 text-[13px] font-medium leading-[1.45] text-ink/70">
           {profile.bio}
         </p>
 
-        <ul className="mt-3 flex flex-wrap gap-1.5">
-          {profile.interests.map((interest) => (
+        <ul className="mt-2.5 flex flex-wrap gap-1.5">
+          {profile.interests.slice(0, 4).map((interest) => (
             <li
               key={interest}
-              className="rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-medium text-white ring-1 ring-inset ring-white/25 backdrop-blur-sm"
+              className="rounded-full border border-ink bg-white/75 px-2.5 py-0.5 text-[10px] font-extrabold leading-tight text-ink"
             >
               {interest}
             </li>
           ))}
         </ul>
-      </div>
-
-      <div
-        aria-hidden
-        className="pointer-events-none absolute left-5 top-6 -rotate-12 rounded-xl border-[3px] border-emerald-400 px-3 py-1 text-2xl font-black uppercase tracking-widest text-emerald-400"
-        style={{ opacity: likeOpacity }}
-      >
-        Like
-      </div>
-
-      <div
-        aria-hidden
-        className="pointer-events-none absolute right-5 top-6 rotate-12 rounded-xl border-[3px] border-rose-500 px-3 py-1 text-2xl font-black uppercase tracking-widest text-rose-500"
-        style={{ opacity: passOpacity }}
-      >
-        Nope
       </div>
     </article>
   );

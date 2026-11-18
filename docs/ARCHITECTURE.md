@@ -151,7 +151,7 @@ interface SeedProfile {
   id: string;          // "p01" … "p36"
   name: string;
   age: number;
-  photo: string;       // remote placeholder portrait (randomuser.me)
+  photo: string;       // local portrait path, e.g. "/photos/p01.jpg"
   bio: string;
   city: string;
   college?: string;
@@ -258,7 +258,54 @@ without a layout jump.
 
 ---
 
-## 9. Persistence and concurrency
+## 9. Brand and visual system
+
+The visual direction comes from Coy's light brand references: white paper, bold black outlines,
+hard offset shadows, pastel fills, hot-pink accents, and the lowercase `coy.` wordmark.
+
+**Tokens** (`app/globals.css`, exposed as Tailwind theme colors)
+
+| Token | Value | Use |
+| ----- | ----- | --- |
+| `ink` | `#141114` | Text, borders, hard shadows |
+| `coy-pink` | `#f20a7a` | Primary actions, active tab, wordmark dot |
+| `lavender` | `#e9defb` | Primary card fill / matches |
+| `mint` | `#c9f2dc` | Secondary card fill / count pills |
+| `blush` | `#ffdcea` | Tertiary card fill / errors |
+| `smoke` | `#6f6975` | Secondary text |
+
+**Primitives**
+
+- `.coy-card` — 2px ink border, 28px radius, `5px 5px 0` offset shadow. Used for the swipe card,
+  match dialog, and empty/error panels.
+- `.coy-card-sm` — compact variant with a `3px 3px 0` shadow for the matches grid.
+- `.coy-btn` — outlined pill with a hard shadow that compresses on press; used for icons,
+  primary actions, and the floating tab bar.
+- Cards rotate through lavender → mint → blush by profile index so the deck reads as a set while
+  staying visually distinct.
+
+**Chrome**
+
+- `components/wordmark.tsx` renders `coy` plus a pink CSS dot; the same mark appears as a pink
+  rounded-square SVG app icon (`app/icon.svg`) with a black `C`.
+- `components/app-shell.tsx` is a full-width phone layout with no faux device frame; on desktop it
+  centers a 620px column on white.
+- The tab bar floats as an outlined pill at the bottom, with the active tab filled hot pink.
+- Figtree (via `next/font`) supplies the rounded geometric type; headings use heavy weights and
+  tight tracking.
+- All decorative motion (card fly-out, match pop, floating hearts) is CSS keyframes and respects
+  `prefers-reduced-motion`.
+
+**Photos**
+
+The 36 seed portraits are local files in `public/photos/p01.jpg` … `p36.jpg` (900×1200,
+face-cropped); the current user's avatar is `public/photos/alex.jpg`. They are demo content from
+Unsplash; see `public/photos/SOURCES.md`. Keeping the assets local removes third-party runtime
+requests and makes the deck deterministic offline.
+
+---
+
+## 10. Persistence and concurrency
 
 - Every request reads `data/store.json` from disk — there is no in-memory cache, so a dev-server
   restart or an external edit is always reflected.
@@ -269,7 +316,7 @@ without a layout jump.
 
 ---
 
-## 10. Project structure
+## 11. Project structure
 
 ```
 app/
@@ -284,9 +331,10 @@ app/
     swipe/route.ts           # alias of /swipe
     matches/route.ts         # alias of /matches
 components/
-  app-shell.tsx              # tab state + phone frame
-  tab-bar.tsx                # Home / Discover tabs
+  app-shell.tsx              # tab state + full-width shell
+  tab-bar.tsx                # floating outlined Home / Discover dock
   home-tab.tsx               # blank placeholder
+  wordmark.tsx               # "coy." wordmark with pink dot
   discover/
     discover-tab.tsx         # data loading, swipe handling, views, error/empty states
     swipe-deck.tsx           # gesture logic, stack, buttons, keyboard
@@ -302,6 +350,8 @@ lib/
 data/
   profiles.json              # 36 seed profiles
   store.json                 # runtime state (gitignored)
+public/
+  photos/                    # seed portraits, alex.jpg + SOURCES.md
 docs/
   ARCHITECTURE.md            # this document
   API.md                     # endpoint reference
@@ -309,7 +359,7 @@ docs/
 
 ---
 
-## 11. Design decisions and trade-offs
+## 12. Design decisions and trade-offs
 
 | Decision | Alternative considered | Why this one |
 | -------- | ---------------------- | ------------ |
@@ -324,16 +374,16 @@ docs/
 
 ---
 
-## 12. How to run and demo
+## 13. How to run and demo
 
 ```bash
 bun install
 bun dev            # http://localhost:3000
 ```
 
-1. Land on **Home** (blank, as specified).
-2. Switch to **Discover**; drag the first card right (or press →). The first profile has already
-   liked you, so this produces an immediate **"It's a match!"**.
+1. Land on **Discover**; the **Home** tab is one tap away and intentionally blank.
+2. Drag the first card right (or press →). The first profile has already liked you, so this
+   produces an immediate **"It's a match!"**.
 3. Open **Matches** to see the mutual match; reload the page and confirm it is still there.
 4. Swipe left on a few profiles and confirm they never return.
 5. Swipe through the deck to reach the empty state.
@@ -342,13 +392,13 @@ To reset the demo state, stop the server and delete `data/store.json`.
 
 ---
 
-## 13. Limitations and future work
+## 14. Limitations and future work
 
 - **Single process only.** The promise-queue write serialisation is per Node process; a multi-instance
   deployment would need SQLite/Postgres with a uniqueness constraint on `(profile_id)`.
 - **File-system storage.** Serverless hosts with read-only file systems need an external database.
 - **No auth.** `lib/current-user.ts` hard-codes the single user.
 - **No chat / unmatch / undo.** Deliberately out of scope.
-- **Placeholder photos** come from `randomuser.me`; a gradient + initials fallback renders when the
-  network is unavailable.
+- **Placeholder photos** are local Unsplash demo portraits in `public/photos/`; a pastel gradient +
+  initials avatar renders if an image fails to load.
 - **Feed ordering** follows the seed file. A production app would rank by recency/activity.

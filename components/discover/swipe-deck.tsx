@@ -10,7 +10,7 @@ import {
 } from "react";
 
 import { SwipeCard } from "@/components/discover/swipe-card";
-import { HeartIcon, XIcon } from "@/components/icons";
+import { HeartFilledIcon, XIcon } from "@/components/icons";
 import type { Profile, SwipeDirection } from "@/lib/types";
 
 interface SwipeDeckProps {
@@ -140,86 +140,85 @@ export function SwipeDeck({ profiles, onSwipe, disabled = false }: SwipeDeckProp
 
   return (
     <div className="flex h-full flex-col">
-      <div className="relative min-h-0 flex-1">
-        {profiles.slice(0, MAX_VISIBLE).map((profile, index) => {
-          const isTop = index === 0;
+      <div className="relative flex min-h-0 flex-1 items-center justify-center">
+        <div className="relative h-full w-full max-h-[680px]">
+          {profiles.slice(0, MAX_VISIBLE).map((profile, index) => {
+            const isTop = index === 0;
 
-          const style: CSSProperties =
-            isTop && drag
-              ? {
-                  transform: `translate3d(${drag.x}px, ${drag.y * 0.35}px, 0) rotate(${drag.x / 20}deg)`,
-                  transition: "none",
-                  touchAction: "pan-y",
-                  zIndex: 30,
+            const style: CSSProperties =
+              isTop && drag
+                ? {
+                    transform: `translate3d(${drag.x}px, ${drag.y * 0.35}px, 0) rotate(${drag.x / 20}deg)`,
+                    transition: "none",
+                    touchAction: "pan-y",
+                    zIndex: 30,
+                  }
+                : {
+                    transform: `translate3d(0, ${index * 10}px, 0) scale(${1 - index * 0.05})`,
+                    transition: "transform 280ms cubic-bezier(0.22, 1, 0.36, 1)",
+                    touchAction: isTop ? "pan-y" : "auto",
+                    zIndex: 30 - index * 10,
+                  };
+
+            return (
+              <div
+                key={profile.id}
+                style={style}
+                className={`absolute inset-0 ${
+                  isTop
+                    ? "cursor-grab active:cursor-grabbing"
+                    : "pointer-events-none"
+                }`}
+                onPointerDown={isTop ? handlePointerDown : undefined}
+                onPointerMove={isTop ? handlePointerMove : undefined}
+                onPointerUp={
+                  isTop ? (event) => finishDrag(event, false) : undefined
                 }
-              : {
-                  transform: `translate3d(0, ${index * 10}px, 0) scale(${1 - index * 0.05})`,
-                  transition: "transform 280ms cubic-bezier(0.22, 1, 0.36, 1)",
-                  touchAction: isTop ? "pan-y" : "auto",
-                  zIndex: 30 - index * 10,
-                };
+                onPointerCancel={
+                  isTop ? (event) => finishDrag(event, true) : undefined
+                }
+              >
+                <SwipeCard
+                  profile={profile}
+                  dragX={isTop && drag ? drag.x : 0}
+                />
+              </div>
+            );
+          })}
 
-          return (
+          {ghosts.map((ghost) => (
             <div
-              key={profile.id}
-              style={style}
-              className={`absolute inset-0 ${
-                isTop
-                  ? "cursor-grab active:cursor-grabbing"
-                  : "pointer-events-none"
+              key={ghost.key}
+              aria-hidden
+              className={`pointer-events-none absolute inset-0 ${
+                ghost.direction === "like"
+                  ? "animate-card-fly-right"
+                  : "animate-card-fly-left"
               }`}
-              onPointerDown={isTop ? handlePointerDown : undefined}
-              onPointerMove={isTop ? handlePointerMove : undefined}
-              onPointerUp={
-                isTop ? (event) => finishDrag(event, false) : undefined
-              }
-              onPointerCancel={
-                isTop ? (event) => finishDrag(event, true) : undefined
+              style={
+                {
+                  zIndex: 40,
+                  "--fly-x": `${ghost.x}px`,
+                  "--fly-y": `${ghost.y * 0.35}px`,
+                  "--fly-r": `${ghost.x / 20}deg`,
+                } as CSSProperties
               }
             >
-              <SwipeCard
-                profile={profile}
-                dragX={isTop && drag ? drag.x : 0}
-              />
+              <SwipeCard profile={ghost.profile} stamp={ghost.direction} />
             </div>
-          );
-        })}
-
-        {ghosts.map((ghost) => (
-          <div
-            key={ghost.key}
-            aria-hidden
-            className={`pointer-events-none absolute inset-0 ${
-              ghost.direction === "like"
-                ? "animate-card-fly-right"
-                : "animate-card-fly-left"
-            }`}
-            style={
-              {
-                zIndex: 40,
-                "--fly-x": `${ghost.x}px`,
-                "--fly-y": `${ghost.y * 0.35}px`,
-                "--fly-r": `${ghost.x / 20}deg`,
-              } as CSSProperties
-            }
-          >
-            <SwipeCard
-              profile={ghost.profile}
-              stamp={ghost.direction}
-            />
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
 
-      <div className="mt-4 flex items-center justify-center gap-7">
+      <div className="mt-4 flex items-center justify-center gap-5">
         <button
           type="button"
           onClick={() => trigger("pass")}
           disabled={disabled || !top}
           aria-label={top ? `Pass on ${top.name}` : "Pass"}
-          className="flex h-16 w-16 items-center justify-center rounded-full bg-white text-stone-400 shadow-lg shadow-stone-900/5 ring-1 ring-stone-200 transition hover:scale-105 hover:text-stone-700 active:scale-95 disabled:opacity-40"
+          className="coy-btn h-16 w-16 bg-white p-0 text-ink hover:bg-lavender-soft"
         >
-          <XIcon className="h-7 w-7" strokeWidth={2.5} />
+          <XIcon className="h-7 w-7" strokeWidth={2.6} />
         </button>
 
         <button
@@ -227,14 +226,22 @@ export function SwipeDeck({ profiles, onSwipe, disabled = false }: SwipeDeckProp
           onClick={() => trigger("like")}
           disabled={disabled || !top}
           aria-label={top ? `Like ${top.name}` : "Like"}
-          className="flex h-16 w-16 items-center justify-center rounded-full bg-rose-500 text-white shadow-lg shadow-rose-500/30 transition hover:scale-105 hover:bg-rose-600 active:scale-95 disabled:opacity-40"
+          className="coy-btn h-16 w-16 bg-coy-pink p-0 text-white hover:bg-coy-pink-dark"
         >
-          <HeartIcon className="h-7 w-7" strokeWidth={2.5} />
+          <HeartFilledIcon className="h-7 w-7" />
         </button>
       </div>
 
-      <p className="mt-2.5 text-center text-[11px] font-medium text-stone-400">
-        {profiles.length} {profiles.length === 1 ? "profile" : "profiles"} left
+      <p
+        aria-live="polite"
+        className="mt-3 flex items-center justify-center gap-2 text-center text-[10px] font-extrabold uppercase tracking-[0.16em] text-smoke"
+      >
+        <span>
+          {profiles.length} {profiles.length === 1 ? "profile" : "profiles"} left
+        </span>
+        <span aria-hidden className="h-1 w-1 rounded-full bg-coy-pink" />
+        <span className="hidden sm:inline">← pass · like →</span>
+        <span className="sm:hidden">swipe to choose</span>
       </p>
     </div>
   );

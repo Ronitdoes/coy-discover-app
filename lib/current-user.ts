@@ -7,6 +7,6 @@ export const CURRENT_USER = {
   id: "me",
   name: "Alex",
   age: 28,
-  photo: "https://randomuser.me/api/portraits/men/12.jpg",
+  photo: "/photos/alex.jpg",
   city: "San Francisco",
 } as const;

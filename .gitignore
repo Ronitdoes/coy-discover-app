@@ -17,6 +17,10 @@
 /.next/
 /out/
 
+# local demo state (swipes + matches); delete to reset the demo
+/data/store.json
+/data/store.json.tmp
+
 # production
 /build
 

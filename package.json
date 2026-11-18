@@ -1,6 +1,7 @@
 {
-  "name": "matchmaking-app-assignment",
-  "version": "0.1.0",
+  "name": "coy-discover",
+  "version": "1.0.0",
+  "description": "A mobile-first, swipe-based discovery feature with mutual matching.",
   "private": true,
   "scripts": {
     "dev": "next dev",

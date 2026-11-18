@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #faf7f5;
+  --foreground: #1c1917;
 }
 
 @theme inline {
@@ -12,15 +12,120 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  height: 100%;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  /* Stop pull-to-refresh / rubber-banding from fighting the swipe gesture. */
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ---------------------------------------------------------------------------
+   Swipe card fly-out
+   The ghost card continues from the exact release offset (--fly-*) and then
+   leaves the viewport. 300ms matches the JS timeout that removes the ghost.
+--------------------------------------------------------------------------- */
+
+@keyframes card-fly-right {
+  from {
+    transform: translate3d(var(--fly-x, 0px), var(--fly-y, 0px), 0)
+      rotate(var(--fly-r, 0deg));
+    opacity: 1;
+  }
+  to {
+    transform: translate3d(120vw, calc(var(--fly-y, 0px) - 24px), 0)
+      rotate(18deg);
+    opacity: 0;
+  }
+}
+
+@keyframes card-fly-left {
+  from {
+    transform: translate3d(var(--fly-x, 0px), var(--fly-y, 0px), 0)
+      rotate(var(--fly-r, 0deg));
+    opacity: 1;
+  }
+  to {
+    transform: translate3d(-120vw, calc(var(--fly-y, 0px) - 24px), 0)
+      rotate(-18deg);
+    opacity: 0;
+  }
+}
+
+.animate-card-fly-right {
+  animation: card-fly-right 300ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+}
+
+.animate-card-fly-left {
+  animation: card-fly-left 300ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+}
+
+/* ---------------------------------------------------------------------------
+   "It's a match!" overlay
+--------------------------------------------------------------------------- */
+
+@keyframes match-pop {
+  0% {
+    transform: scale(0.88) translateY(12px);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.02) translateY(0);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-match-pop {
+  animation: match-pop 440ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes match-heart-float {
+  0% {
+    transform: translateY(10px) scale(0.7) rotate(-8deg);
+    opacity: 0;
+  }
+  25% {
+    opacity: 0.85;
+  }
+  100% {
+    transform: translateY(-130px) scale(1.05) rotate(10deg);
+    opacity: 0;
+  }
+}
+
+.animate-heart-float {
+  animation: match-heart-float 2.6s ease-out infinite;
+}
+
+/* ---------------------------------------------------------------------------
+   Utilities
+--------------------------------------------------------------------------- */
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

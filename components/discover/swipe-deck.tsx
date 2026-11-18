@@ -232,16 +232,9 @@ export function SwipeDeck({ profiles, onSwipe, disabled = false }: SwipeDeckProp
         </button>
       </div>
 
-      <p
-        aria-live="polite"
-        className="mt-3 flex items-center justify-center gap-2 text-center text-[10px] font-extrabold uppercase tracking-[0.16em] text-smoke"
-      >
-        <span>
-          {profiles.length} {profiles.length === 1 ? "profile" : "profiles"} left
-        </span>
-        <span aria-hidden className="h-1 w-1 rounded-full bg-coy-pink" />
+      <p className="mt-3 flex items-center justify-center gap-2 text-center text-[10px] font-extrabold uppercase tracking-[0.16em] text-smoke">
         <span className="hidden sm:inline">← pass · like →</span>
-        <span className="sm:hidden">swipe to choose</span>
+        <span className="sm:hidden">swipe right to choose</span>
       </p>
     </div>
   );

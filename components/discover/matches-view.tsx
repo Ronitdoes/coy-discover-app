@@ -37,7 +37,7 @@ function formatMatchedAt(iso: string) {
 export function MatchesView({ matches, loading = false, onBack }: MatchesViewProps) {
   return (
     <div className="flex h-full min-h-0 flex-col bg-white">
-      <header className="shrink-0 px-5 pb-4 pt-[max(1.25rem,env(safe-area-inset-top))] sm:px-8">
+      <header className="shrink-0 px-5 pb-4 pt-[max(1.25rem,env(safe-area-inset-top))]">
         <div className="flex items-center justify-between gap-3">
           <Wordmark className="text-[31px]" />
           <button
@@ -52,7 +52,7 @@ export function MatchesView({ matches, loading = false, onBack }: MatchesViewPro
 
         <div className="mt-5">
           <div className="flex items-center gap-2.5">
-            <h1 className="text-[30px] font-black leading-none tracking-[-0.05em] text-ink sm:text-[34px]">
+            <h1 className="text-[30px] font-black leading-none tracking-[-0.05em] text-ink">
               Your matches
             </h1>
             <span className="shrink-0 rounded-full border-2 border-ink bg-mint px-2.5 py-1 text-[13px] font-extrabold leading-none text-ink">
@@ -65,9 +65,9 @@ export function MatchesView({ matches, loading = false, onBack }: MatchesViewPro
         </div>
       </header>
 
-      <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-6 pt-1 sm:px-8">
+      <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-6 pt-1">
         {loading ? (
-          <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3" aria-hidden>
+          <ul className="grid grid-cols-2 gap-4" aria-hidden>
             {[0, 1, 2, 3].map((item) => (
               <li key={item}>
                 <div className="coy-card-sm animate-pulse bg-lavender-soft p-2">
@@ -103,7 +103,7 @@ export function MatchesView({ matches, loading = false, onBack }: MatchesViewPro
             </div>
           </div>
         ) : (
-          <ul className="grid grid-cols-2 gap-4 pb-2 sm:grid-cols-3">
+          <ul className="grid grid-cols-2 gap-4 pb-2">
             {matches.map((match, index) => (
               <li key={match.id}>
                 <article

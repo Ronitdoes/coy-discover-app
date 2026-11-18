@@ -93,12 +93,31 @@ async function readStore(): Promise<StoreState> {
 // Writes
 // ---------------------------------------------------------------------------
 
+async function replaceFile(from: string, to: string): Promise<void> {
+  // Windows can transiently reject a rename while another process (an editor,
+  // an antivirus scanner, or the dev server's watcher) holds the destination
+  // open. A short backoff keeps the atomic swap reliable without hiding a
+  // genuine permission error.
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await rename(from, to);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      const transient =
+        code === "EPERM" || code === "EBUSY" || code === "EACCES";
+      if (!transient || attempt >= 4) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 20 * 2 ** attempt));
+    }
+  }
+}
+
 async function writeStore(state: StoreState): Promise<void> {
   await mkdir(DATA_DIR, { recursive: true });
   // Write to a temp file first, then atomically swap it in so a crash or a
   // concurrent reader never observes a half-written store.
   await writeFile(TEMP_STORE_PATH, `${JSON.stringify(state, null, 2)}\n`, "utf8");
-  await rename(TEMP_STORE_PATH, STORE_PATH);
+  await replaceFile(TEMP_STORE_PATH, STORE_PATH);
 }
 
 let writeQueue: Promise<void> = Promise.resolve();

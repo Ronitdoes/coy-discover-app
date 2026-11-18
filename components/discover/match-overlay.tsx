@@ -45,7 +45,7 @@ export function MatchOverlay({ match, onKeepSwiping, onViewMatches }: MatchOverl
     >
       <div
         onClick={(event) => event.stopPropagation()}
-        className="coy-card animate-match-pop no-scrollbar relative max-h-[calc(100dvh-2rem)] w-full max-w-[400px] overflow-y-auto overflow-x-hidden bg-lavender px-5 pb-5 pt-8 text-center sm:px-7 sm:pb-6"
+        className="coy-card animate-match-pop no-scrollbar relative max-h-[calc(100dvh-2rem)] w-full max-w-[400px] overflow-y-auto overflow-x-hidden bg-lavender px-5 pb-5 pt-8 text-center"
       >
         <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
           {FLOATING_HEARTS.map((heart) => (
@@ -75,7 +75,7 @@ export function MatchOverlay({ match, onKeepSwiping, onViewMatches }: MatchOverl
             <Avatar
               src={CURRENT_USER.photo}
               name={CURRENT_USER.name}
-              className="h-[78px] w-[78px] rounded-full border-[3px] border-ink bg-lavender object-cover sm:h-[84px] sm:w-[84px]"
+              className="h-[78px] w-[78px] rounded-full border-[3px] border-ink bg-lavender object-cover"
               fallbackTextClassName="text-2xl"
             />
             <span className="animate-heart-badge z-10 -mx-2.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 border-ink bg-coy-pink text-white shadow-[2px_2px_0_0_var(--color-ink)]">
@@ -84,7 +84,7 @@ export function MatchOverlay({ match, onKeepSwiping, onViewMatches }: MatchOverl
             <Avatar
               src={match.profile.photo}
               name={match.profile.name}
-              className="h-[78px] w-[78px] rounded-full border-[3px] border-ink bg-lavender object-cover sm:h-[84px] sm:w-[84px]"
+              className="h-[78px] w-[78px] rounded-full border-[3px] border-ink bg-lavender object-cover"
               fallbackTextClassName="text-2xl"
             />
           </div>
@@ -96,7 +96,7 @@ export function MatchOverlay({ match, onKeepSwiping, onViewMatches }: MatchOverl
 
           <h2
             id="match-title"
-            className="mt-2 text-balance text-[38px] font-black leading-[0.95] tracking-[-0.055em] text-ink sm:text-[44px]"
+            className="mt-2 text-balance text-[38px] font-black leading-[0.95] tracking-[-0.055em] text-ink"
           >
             It&rsquo;s a match!
           </h2>

@@ -78,3 +78,32 @@ export function MapPinIcon(props: IconProps) {
     </svg>
   );
 }
+
+export function ShareIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M12 15V3M8 7l4-4 4 4" />
+      <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7" />
+    </svg>
+  );
+}
+
+export function DownloadIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <path d="m7 10 5 5 5-5" />
+      <path d="M12 15V3" />
+    </svg>
+  );
+}
+
+export function ChevronsRightIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="m4 17 5-5-5-5" />
+      <path d="m10 17 5-5-5-5" />
+      <path d="m16 17 5-5-5-5" />
+    </svg>
+  );
+}

@@ -5,7 +5,9 @@ import { useCallback, useEffect, useState } from "react";
 import { MatchOverlay } from "@/components/discover/match-overlay";
 import { MatchesView } from "@/components/discover/matches-view";
 import { SwipeDeck } from "@/components/discover/swipe-deck";
-import { HeartFilledIcon } from "@/components/icons";
+import { DownloadIcon, HeartFilledIcon } from "@/components/icons";
+import { InstallBanner } from "@/components/install/install-banner";
+import type { InstallController } from "@/components/install/use-install-prompt";
 import { Wordmark } from "@/components/wordmark";
 import type {
   FeedResponse,
@@ -18,7 +20,11 @@ import type {
 
 type LoadStatus = "loading" | "ready" | "error";
 
-export function DiscoverTab() {
+interface DiscoverTabProps {
+  install: InstallController;
+}
+
+export function DiscoverTab({ install }: DiscoverTabProps) {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [status, setStatus] = useState<LoadStatus>("loading");
@@ -26,6 +32,7 @@ export function DiscoverTab() {
   const [swipeError, setSwipeError] = useState<string | null>(null);
   const [match, setMatch] = useState<Match | null>(null);
   const [view, setView] = useState<"deck" | "matches">("deck");
+  const [showInstall, setShowInstall] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
@@ -58,7 +65,11 @@ export function DiscoverTab() {
         if (controller.signal.aborted) return;
         setStatus("error");
         setError(
-          cause instanceof Error ? cause.message : "Something went wrong",
+          typeof navigator !== "undefined" && navigator.onLine === false
+            ? "You're offline. Reconnect to pick up where you left off."
+            : cause instanceof Error
+              ? cause.message
+              : "Something went wrong",
         );
       });
 
@@ -70,6 +81,16 @@ export function DiscoverTab() {
     setError(null);
     setReloadKey((key) => key + 1);
   }, []);
+
+  // If the feed failed because the device was offline, load it again as soon
+  // as the browser reports that the connection is back.
+  useEffect(() => {
+    if (status !== "error") return;
+
+    const handleOnline = () => retry();
+    window.addEventListener("online", handleOnline);
+    return () => window.removeEventListener("online", handleOnline);
+  }, [status, retry]);
 
   const handleSwipe = useCallback(
     (profile: Profile, direction: SwipeDirection) => {
@@ -122,6 +143,7 @@ export function DiscoverTab() {
     setMatch(null);
     setView("matches");
   }, []);
+  const closeInstall = useCallback(() => setShowInstall(false), []);
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-white" aria-label="Discover">
@@ -133,33 +155,52 @@ export function DiscoverTab() {
         />
       ) : (
         <>
-          <header className="flex shrink-0 items-center justify-between gap-3 px-5 pb-3 pt-[max(1.25rem,env(safe-area-inset-top))] sm:px-8">
+          <header className="flex shrink-0 items-center justify-between gap-3 px-5 pb-3 pt-[max(1.25rem,env(safe-area-inset-top))]">
             <Wordmark className="text-[31px]" />
-            <button
-              type="button"
-              onClick={() => setView("matches")}
-              aria-label={
-                matches.length > 0
-                  ? `View your ${matches.length} ${
-                      matches.length === 1 ? "match" : "matches"
-                    }`
-                  : "View your matches"
-              }
-              className="coy-btn relative h-11 w-11 shrink-0 bg-lavender p-0 text-coy-pink hover:bg-white"
-            >
-              <HeartFilledIcon className="h-5 w-5" />
-              {matches.length > 0 ? (
-                <span
-                  aria-hidden
-                  className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-ink bg-coy-pink px-1 text-[10px] font-extrabold leading-none text-white"
+            <div className="flex shrink-0 items-center gap-2">
+              {install.isStandalone ? null : (
+                <button
+                  type="button"
+                  onClick={() => setShowInstall((open) => !open)}
+                  aria-label="Add Coy to your home screen"
+                  aria-expanded={showInstall}
+                  aria-controls="install-banner"
+                  className="pwa-install-entry coy-btn h-11 w-11 shrink-0 bg-sky p-0 text-ink hover:bg-white"
                 >
-                  {matches.length}
-                </span>
-              ) : null}
-            </button>
+                  <DownloadIcon className="h-5 w-5" strokeWidth={2.2} />
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setView("matches")}
+                aria-label={
+                  matches.length > 0
+                    ? `View your ${matches.length} ${
+                        matches.length === 1 ? "match" : "matches"
+                      }`
+                    : "View your matches"
+                }
+                className="coy-btn relative h-11 w-11 shrink-0 bg-lavender p-0 text-coy-pink hover:bg-white"
+              >
+                <HeartFilledIcon className="h-5 w-5" />
+                {matches.length > 0 ? (
+                  <span
+                    aria-hidden
+                    className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-ink bg-coy-pink px-1 text-[10px] font-extrabold leading-none text-white"
+                  >
+                    {matches.length}
+                  </span>
+                ) : null}
+              </button>
+            </div>
           </header>
 
-          <div className="flex min-h-0 flex-1 flex-col px-5 pb-2 sm:px-8">
+          {showInstall ? (
+            <InstallBanner install={install} onClose={closeInstall} />
+          ) : null}
+
+          <div className="flex min-h-0 flex-1 flex-col px-5 pb-2">
             {swipeError ? (
               <div
                 role="alert"
@@ -244,8 +285,8 @@ function ErrorState({
 }) {
   return (
     <div className="no-scrollbar h-full overflow-y-auto">
-      <div className="flex min-h-full items-center justify-center py-2">
-        <div className="coy-card w-full max-w-[440px] bg-blush px-6 py-8 text-center sm:px-8">
+      <div className="flex min-h-full items-center justify-center p-2 sm:items-start sm:pt-12">
+        <div className="coy-card w-full max-w-[440px] bg-blush px-6 py-8 text-center">
           <span aria-hidden className="text-4xl">
             🙈
           </span>
@@ -271,8 +312,8 @@ function ErrorState({
 function EmptyState({ onViewMatches }: { onViewMatches: () => void }) {
   return (
     <div className="no-scrollbar h-full overflow-y-auto">
-      <div className="flex min-h-full items-center justify-center py-2">
-        <div className="coy-card w-full max-w-[440px] bg-lavender px-6 py-8 text-center sm:px-8">
+      <div className="flex min-h-full items-center justify-center p-2 sm:items-start sm:pt-12">
+        <div className="coy-card w-full max-w-[440px] bg-lavender px-6 py-8 text-center">
           <span aria-hidden className="text-4xl">
             👀
           </span>

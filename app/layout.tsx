@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Figtree } from "next/font/google";
 
+import { PwaRegister } from "@/components/pwa-register";
+
 import "./globals.css";
 
 const figtree = Figtree({
@@ -14,6 +16,9 @@ export const metadata: Metadata = {
   description:
     "Swipe to discover people nearby. A match only happens when you both like each other.",
   applicationName: "Coy",
+  formatDetection: {
+    telephone: false,
+  },
   appleWebApp: {
     capable: true,
     title: "Coy",
@@ -31,7 +36,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${figtree.variable} h-full antialiased`}>
-      <body className="min-h-full font-sans">{children}</body>
+      <body className="min-h-full font-sans">
+        <PwaRegister />
+        {children}
+      </body>
     </html>
   );
 }

@@ -8,15 +8,19 @@ matching rules, and the reasoning behind them.
 
 ## 1. Overview
 
-**Coy Discover** is a mobile-first Next.js application with a two-tab shell:
+**Coy Discover** is a mobile-first, installable Next.js application. On a first visit it opens
+with a one-screen onboarding intro; afterwards it has a two-tab shell:
 
-| Tab        | Purpose                                                        |
-| ---------- | -------------------------------------------------------------- |
-| **Home**   | Intentionally blank placeholder for Coy's existing experience.  |
+| State / tab | Purpose                                                        |
+| ----------- | -------------------------------------------------------------- |
+| **Onboarding** | First-visit intro: the match constellation, the privacy promise, and a Get Started control that can be tapped or swiped. |
+| **Home**    | Intentionally blank placeholder for Coy's existing experience.  |
 | **Discover** | The swipe deck, match celebration, and mutual-matches list.    |
 
-All functionality lives in the Discover tab. The app assumes a single logged-in user
-(`lib/current-user.ts`); there is no auth, no chat, and no multi-user support.
+All product functionality lives in Discover. The app assumes a single logged-in user
+(`lib/current-user.ts`); there is no auth, no chat, and no multi-user support. A hand-written
+service worker makes the installed app open offline and keeps the shell available when the network
+drops; the API itself always requires a connection.
 
 ---
 
@@ -24,6 +28,8 @@ All functionality lives in the Discover tab. The app assumes a single logged-in 
 
 **Goals**
 
+- A first-visit onboarding screen that explains the product and can be completed by tap, keyboard,
+  or a right-swipe, remembered across visits.
 - One profile card at a time, with swipe gestures on touch and buttons/keyboard on desktop.
 - Smooth, interruptible card animations with unmistakable feedback (LIKE / NOPE stamps, fly-out).
 - A profile that has been swiped on **never** appears again (persisted server-side).
@@ -31,11 +37,14 @@ All functionality lives in the Discover tab. The app assumes a single logged-in 
   an "It's a match!" screen and collected in a Matches view.
 - The app never reveals who has already liked the user unless the like is mutual.
 - Swipes and matches survive page reloads and server restarts.
+- Installable as a standalone PWA on iOS, Android, and desktop, with platform-appropriate guidance.
+- A cached app shell and offline fallback so a dropped connection does not show a browser error.
 
 **Non-goals**
 
 - Authentication, messaging, push notifications, real photo uploads.
 - Multi-user / real-time behaviour.
+- Offline mutations or background sync.
 - Production data stores or horizontal scaling (see *Limitations*).
 
 ---
@@ -58,6 +67,9 @@ All functionality lives in the Discover tab. The app assumes a single logged-in 
 | `POST /swipe`                                | `app/swipe/route.ts` |
 | `GET /matches`                               | `app/matches/route.ts` |
 | Persistence across reloads                   | JSON file store with atomic writes (`lib/store.ts`) |
+| First-visit onboarding, remembered            | `components/onboarding/*`, `coy:onboarding-complete` in `localStorage` (`app-shell.tsx`) |
+| Installable PWA                              | `app/manifest.ts`, `public/icons/*`, `components/install/*`, `components/pwa-register.tsx` |
+| Offline shell + fallback                     | `public/sw.js`, `app/offline/page.tsx`, `components/offline-retry-button.tsx` |
 
 ---
 
@@ -70,6 +82,7 @@ All functionality lives in the Discover tab. The app assumes a single logged-in 
 | Server     | **Next.js Route Handlers** (`app/api/**/route.ts`) | Request/response API with zero extra infrastructure; supports streaming, `Request`/`Response`. |
 | Data       | **JSON files** (`data/profiles.json`, `data/store.json`) | Explicitly allowed by the brief; zero setup, inspectable, and easy to reset for demos. |
 | Gestures   | **Pointer Events + CSS transforms** (no library) | One code path for touch, pen, and mouse; avoids a ~50 kB animation dependency. |
+| PWA        | **Web App Manifest + hand-written Service Worker** | Installability and an offline shell with no Workbox/next-pwa dependency; the cache policy is small enough to own explicitly. |
 | Icons      | Inline SVG components | No icon package needed. |
 
 No runtime dependencies were added — the app builds on `next`/`react` only.
@@ -81,17 +94,23 @@ No runtime dependencies were added — the app builds on `next`/`react` only.
 ```
 ┌──────────────────────────── Browser (Client Components) ────────────────────────────┐
 │                                                                                     │
-│  AppShell  (tab state: "home" | "discover")                                         │
+│  AppShell  (onboarding gate + tab state: "home" | "discover")                       │
+│   ├── OnboardingScreen       → first visit only; Get Started tap/swipe              │
+│   │     └── GetStartedButton → completes onboarding, writes localStorage flag       │
 │   ├── HomeTab                → blank placeholder                                    │
-│   └── DiscoverTab                                                                   │
-│        ├── header + Matches(n) button                                               │
+│   ├── TabBar                → Home / Discover                                        │
+│   └── DiscoverTab  (+ install controller)                                           │
+│        ├── header + Install entry + Matches(n) button                               │
+│        ├── InstallBanner      → native prompt or platform-specific help            │
 │        ├── SwipeDeck                                                                │
 │        │     ├── SwipeCard ×3 (stacked, top card is draggable)                      │
 │        │     ├── fly-out ghosts (CSS keyframes)                                     │
 │        │     └── Pass / Like buttons + keyboard (←/→)                               │
 │        ├── MatchOverlay        → "It's a match!"                                    │
 │        ├── MatchesView         → grid of mutual matches                             │
-│        └── EmptyState / ErrorState / Skeleton                                       │
+│        └── EmptyState / ErrorState / Skeleton / offline retry                       │
+│                                                                                     │
+│  PwaRegister → navigator.serviceWorker.register("/sw.js")                           │
 │                                                                                     │
 └───────────────▲─────────────────────────────────────────────────────────────────────┘
                 │ fetch (JSON, no-store)
@@ -103,12 +122,18 @@ No runtime dependencies were added — the app builds on `next`/`react` only.
 │  GET  /matches  → store.getMatches()   → { matches: [...] }                     │
 │                                                                                     │
 └───────────────▲─────────────────────────────────────────────────────────────────────┘
-                │ node:fs/promises (atomic write: tmp + rename, serialized queue)
+                │ node:fs/promises (atomic write: tmp + rename with retry, serialized queue)
 ┌───────────────┴─────────────────────────────────────────────────────────────────────┐
 │ Data files                                                                          │
 │  data/profiles.json  → 36 seed profiles (incl. likedYou, never sent until mutual)   │
 │  data/store.json     → { version, swipes, matches }  (gitignored, created on write) │
 └─────────────────────────────────────────────────────────────────────────────────────┘
+
+Service worker (public/sw.js)
+  navigations        → network-first, cached "/" then "/offline" fallback
+  /_next/static/*    → network-first, cache fallback
+  /photos, /icons    → cache-first
+  /api/*, /feed, /swipe, /matches → never intercepted or cached
 ```
 
 The handlers are mounted at the canonical paths from the brief (`/feed`, `/swipe`, `/matches`) and
@@ -138,6 +163,36 @@ Drag release / button / arrow key
 
 ```
 DiscoverTab loads GET /matches on mount; the header badge and MatchesView read that state
+```
+
+**Onboarding**
+
+```
+First visit (no coy:onboarding-complete flag)
+  → AppShell renders OnboardingScreen (server snapshot = not complete to avoid a flash)
+  → Get Started: tap/keyboard, or drag the control past 55% of its travel
+  → completeOnboarding(): localStorage.setItem("coy:onboarding-complete", "true")
+  → AppShell renders Discover; later visits read the flag through useSyncExternalStore
+```
+
+**Install**
+
+```
+AppShell mounts useInstallPrompt() for the whole visit
+  → Chromium fires beforeinstallprompt → event.preventDefault(), keep the event
+  → header download button opens InstallBanner
+  → Add → promptInstall() → native prompt → accepted / dismissed / unavailable
+  → iOS/Safari/Firefox (or no prompt): expand platform-specific Add to Home Screen steps
+  → display-mode: standalone (CSS + hook) hides the entry point entirely
+```
+
+**Offline**
+
+```
+PwaRegister → /sw.js install → fetch and cache "/", "/offline", manifest, icons
+Navigation while offline → SW network-first → cached "/" shell, or "/offline" if absent
+Discover API failure + navigator.onLine === false → offline error copy
+window "online" event → retry() → fresh GET /api/feed, no reload required
 ```
 
 ---
@@ -289,12 +344,14 @@ hard offset shadows, pastel fills, hot-pink accents, and the lowercase `coy.` wo
 - `components/wordmark.tsx` renders `coy` plus a pink CSS dot; the same mark appears as a pink
   rounded-square SVG app icon (`app/icon.svg`) with a black `C`.
 - `components/app-shell.tsx` is a full-width phone layout with no faux device frame; on desktop it
-  centers a 620px column on white.
+  centers a **390 px** column on white.
+- The onboarding screen uses a light paper grid, a portrait constellation of real seed profiles
+  around pastel mystery bubbles, hand-drawn arrow, and a black swipe/tap Get Started control.
 - The tab bar floats as an outlined pill at the bottom, with the active tab filled hot pink.
 - Figtree (via `next/font`) supplies the rounded geometric type; headings use heavy weights and
   tight tracking.
-- All decorative motion (card fly-out, match pop, floating hearts) is CSS keyframes and respects
-  `prefers-reduced-motion`.
+- All decorative motion (card fly-out, match pop, floating hearts, onboarding bubbles/arrow) is CSS
+  keyframes and respects `prefers-reduced-motion`.
 
 **Photos**
 
@@ -305,24 +362,91 @@ requests and makes the deck deterministic offline.
 
 ---
 
-## 10. Persistence and concurrency
+## 10. Onboarding, installation, and offline
+
+### 10.1 First-visit onboarding
+
+`AppShell` decides whether to render `OnboardingScreen` or the tabbed app. Completion is stored
+under `coy:onboarding-complete` in `localStorage` and read through `useSyncExternalStore`, so the
+shell re-renders when another tab clears the flag. A per-visit state flag covers browsers where
+storage is blocked.
+
+- The server snapshot is "not complete" so the first paint can hydrate either state; a returning
+  visitor's client snapshot then wins.
+- `GetStartedButton` is a real `<button>`: Enter/Space/tap work, and the same control can be
+  dragged right. A completed drag suppresses the synthetic click that follows it.
+- The screen is intentionally one viewport tall at 390 × 844; the match constellation scales from
+  percentage coordinates so it never needs a scroll on small phones.
+
+### 10.2 Installable app
+
+`app/manifest.ts` declares the standalone app: name/short name, `start_url` and scope `/`,
+white background and theme, portrait orientation, and 192/512 "any" + maskable icons. `app/icon.svg`
+and `app/apple-icon.png` cover the browser tab and iOS home screen.
+
+`components/install/use-install-prompt.ts` lives at the shell level, not inside Discover, so the
+one-shot Chromium `beforeinstallprompt` event is retained even while the user is on Home.
+
+| Platform | Behavior |
+| -------- | -------- |
+| Chromium (Chrome, Edge, Samsung) | Deferred prompt captured; **Add** calls `event.prompt()` and reports accepted/dismissed. |
+| iOS Safari | No native prompt; the banner expands Share → **Add to Home Screen** instructions. |
+| Safari (desktop) | Share menu → **Add to Dock / Add to Home Screen**. |
+| Firefox | Explains that install is unavailable and points to a supporting browser. |
+| Other | Generic browser-menu guidance. |
+
+The header entry point is hidden when the app is already running standalone (both a CSS
+`display-mode` rule to avoid a flash and a `useSyncExternalStore` display-mode check).
+
+### 10.3 Service worker and offline behavior
+
+`components/pwa-register.tsx` registers `public/sw.js` after load (progressive enhancement: if
+registration fails, the online app is unaffected). The worker is versioned with `VERSION` and uses
+three caches: shell, static assets, and images.
+
+| Request | Strategy | Why |
+| ------- | -------- | --- |
+| Navigations | Network-first → cached `/` → cached `/offline` | Fresh app when online, usable shell when not. |
+| `/_next/static/*` | Network-first with cache fallback | Hashed build assets can be cached safely. |
+| `/photos/*`, `/icons/*`, `/icon.svg` | Cache-first | Local demo images never change at runtime. |
+| `/api/*`, `/feed`, `/swipe`, `/matches` | Not intercepted | Swipes and matches must never be stale or replayed from a cache. |
+
+On install, the worker precaches the shell, offline page, manifest, and icons individually so one
+failed request cannot abort the whole install. On activate, it deletes caches from older versions
+and claims open clients. The `/offline` page offers a full-document **Try again** navigation so the
+worker can serve the cached shell when the network returns.
+
+Separately, Discover treats an offline feed failure as a first-class state: it shows
+"You're offline…" copy and listens for `window.online` to retry automatically. There is no
+background sync and no offline swipe queue — mutations are deliberately not cached.
+
+> The service worker is only fully meaningful over HTTPS (or `localhost`) and should be tested
+> against a production build. Bump `VERSION` in `public/sw.js` whenever the caching rules change.
+
+## 11. Persistence and concurrency
 
 - Every request reads `data/store.json` from disk — there is no in-memory cache, so a dev-server
   restart or an external edit is always reflected.
 - Writes go through `mutate()`, which serialises read-modify-write cycles on a promise queue and
   then persists atomically: write `store.json.tmp`, then `rename()` over `store.json`. This
   prevents interleaved requests from losing a swipe.
+- On Windows, a rename can be transiently rejected while another process holds the destination
+  open, so `replaceFile()` retries `EPERM`/`EBUSY`/`EACCES` with a short backoff before surfacing
+  the error.
 - `data/profiles.json` is read per request as well, so editing seed data takes effect on reload.
 
 ---
 
-## 11. Project structure
+## 12. Project structure
 
 ```
 app/
-  layout.tsx                 # metadata, viewport, fonts
+  layout.tsx                 # metadata, viewport, fonts, <PwaRegister/>
   page.tsx                   # renders <AppShell/>
-  globals.css                # Tailwind import, theme tokens, keyframes, reduced-motion
+  globals.css                # Tailwind import, tokens, keyframes, reduced-motion
+  manifest.ts                # web app manifest (standalone, icons, colors)
+  icon.svg                   # pink rounded-square browser icon
+  apple-icon.png             # iOS home-screen icon
   feed/route.ts              # GET  /feed
   swipe/route.ts             # POST /swipe
   matches/route.ts           # GET  /matches
@@ -330,18 +454,29 @@ app/
     feed/route.ts            # alias of /feed
     swipe/route.ts           # alias of /swipe
     matches/route.ts         # alias of /matches
+  offline/page.tsx           # service-worker offline fallback
 components/
-  app-shell.tsx              # tab state + full-width shell
+  app-shell.tsx              # onboarding gate + tab state + install controller
   tab-bar.tsx                # floating outlined Home / Discover dock
   home-tab.tsx               # blank placeholder
   wordmark.tsx               # "coy." wordmark with pink dot
+  avatar.tsx                 # photo with initials/gradient fallback
+  icons.tsx                  # inline SVG icons
+  pwa-register.tsx           # registers /sw.js after load
+  offline-retry-button.tsx   # hard navigation back to /
+  onboarding/
+    onboarding-screen.tsx    # first-visit intro + constellation
+    match-stack.tsx          # orbiting photo / "?" bubbles
+    get-started-button.tsx   # tap, keyboard, or swipe-right CTA
+  install/
+    use-install-prompt.ts    # beforeinstallprompt + display-mode + platform
+    install-banner.tsx       # native prompt or platform-specific guidance
   discover/
     discover-tab.tsx         # data loading, swipe handling, views, error/empty states
     swipe-deck.tsx           # gesture logic, stack, buttons, keyboard
     swipe-card.tsx           # card presentation, photo fallback, stamps
     match-overlay.tsx        # "It's a match!" dialog
     matches-view.tsx         # mutual matches grid
-  icons.tsx                  # inline SVG icons
 lib/
   types.ts                   # shared request/response types
   current-user.ts            # the single logged-in user
@@ -351,15 +486,18 @@ data/
   profiles.json              # 36 seed profiles
   store.json                 # runtime state (gitignored)
 public/
+  sw.js                      # versioned service worker
+  icons/                     # 192/512 + maskable PWA icons
   photos/                    # seed portraits, alex.jpg + SOURCES.md
 docs/
   ARCHITECTURE.md            # this document
   API.md                     # endpoint reference
+  screenshots/               # README images (390×844 production captures)
 ```
 
 ---
 
-## 12. Design decisions and trade-offs
+## 13. Design decisions and trade-offs
 
 | Decision | Alternative considered | Why this one |
 | -------- | ---------------------- | ------------ |
@@ -371,34 +509,48 @@ docs/
 | Feed returns all remaining profiles | Paginated feed | 36 profiles is tiny; the client owns the deck order and can animate the stack without extra requests. |
 | `likedYou` stripped by an explicit mapper | `delete profile.likedYou` | A rest-spread would silently start leaking the field if the seed type changes. |
 | Reset via deleting `data/store.json` (no reset API) | A `POST /api/reset` button | The brief requires that a swiped profile never reappears; a reset endpoint would undermine that promise in the UI. |
+| First-visit onboarding flag in `localStorage` | A server-side flag / database column | There is no auth or user record; the intro is a client concern and a server round-trip would add a loading state for no product value. |
+| Hand-written service worker | `next-pwa` / Workbox | The app has one page and a handful of cache rules; owning ~100 lines avoids a build dependency and keeps the API-exclusion rule explicit. |
+| Network-first navigations | Cache-first app shell | Prevents a stale deployed shell from sticking around; the cached copy is only a fallback. |
+| In-app install banner | Rely on the browser's install UI only | Lets the app meet iOS/Safari/Firefox users where no `beforeinstallprompt` exists, and keeps the entry point on-brand. |
 
 ---
 
-## 13. How to run and demo
+## 14. How to run and demo
 
 ```bash
 bun install
 bun dev            # http://localhost:3000
 ```
 
-1. Land on **Discover**; the **Home** tab is one tap away and intentionally blank.
-2. Drag the first card right (or press →). The first profile has already liked you, so this
-   produces an immediate **"It's a match!"**.
+1. On a first visit, land on **Onboarding**. Tap **Get Started** (or swipe the control right).
+2. **Discover** opens with Maya's card. Drag it right (or press →); Maya has already liked you,
+   so this produces an immediate **"It's a match!"**.
 3. Open **Matches** to see the mutual match; reload the page and confirm it is still there.
 4. Swipe left on a few profiles and confirm they never return.
-5. Swipe through the deck to reach the empty state.
+5. Open the download icon in the header to see the install banner, then swipe through the deck to
+   reach the empty state.
+6. Run a production build and install the app, or go offline and reload, to exercise the service
+   worker and `/offline` fallback.
 
-To reset the demo state, stop the server and delete `data/store.json`.
+To reset the demo state, stop the server and delete `data/store.json`. To replay onboarding, run
+`localStorage.removeItem("coy:onboarding-complete")` in the browser console and reload.
 
 ---
 
-## 14. Limitations and future work
+## 15. Limitations and future work
 
 - **Single process only.** The promise-queue write serialisation is per Node process; a multi-instance
   deployment would need SQLite/Postgres with a uniqueness constraint on `(profile_id)`.
 - **File-system storage.** Serverless hosts with read-only file systems need an external database.
 - **No auth.** `lib/current-user.ts` hard-codes the single user.
 - **No chat / unmatch / undo.** Deliberately out of scope.
+- **PWA caveats.** Install prompts need HTTPS (or `localhost`) and a production build. The service
+  worker caches the shell/assets only: swipes are not queued offline, there is no background sync
+  or push, and cache-version bumps are manual (`VERSION` in `public/sw.js`). iOS installation goes
+  through the Share menu because Safari does not expose `beforeinstallprompt`.
+- **Onboarding is per browser.** Clearing site data or `localStorage` replays the intro; there is
+  no account-level flag.
 - **Placeholder photos** are local Unsplash demo portraits in `public/photos/`; a pastel gradient +
   initials avatar renders if an image fails to load.
 - **Feed ordering** follows the seed file. A production app would rank by recency/activity.

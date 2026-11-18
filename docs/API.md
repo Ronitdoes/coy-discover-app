@@ -10,7 +10,8 @@ brief **and** at an `/api/*` alias — both are identical:
 | `/matches` | `/api/matches` |
 
 Responses are JSON and sent with `Cache-Control: no-store` so a feed is never served from a stale
-cache.
+cache. The service worker also excludes `/api/*`, `/feed`, `/swipe`, and `/matches` from every
+cache, so these responses always come from the network.
 
 Base URL (development): `http://localhost:3000`
 

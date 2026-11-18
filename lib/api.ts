@@ -1,15 +1,31 @@
-import { getFeed, getMatches, HttpError, recordSwipe } from "@/lib/store";
+import {
+  getFeed,
+  getMatches,
+  HttpError,
+  readState,
+  recordSwipe,
+  withStateCookie,
+} from "@/lib/store";
 
 const NO_STORE = { "Cache-Control": "no-store" };
 
 /**
  * Shared Route Handler logic. Mounted at both the canonical paths from the
  * brief (`/feed`, `/swipe`, `/matches`) and the idiomatic `/api/*` aliases.
+ *
+ * Swipe state is stored in an HTTP-only cookie, so every read is scoped to the
+ * requesting browser and writes work on read-only serverless filesystems.
  */
 
-export async function handleFeed(): Promise<Response> {
+export async function handleFeed(request: Request): Promise<Response> {
+  // Read the cookie outside the try/catch so Next.js can still see the
+  // request-time bailout during prerendering instead of receiving a 500.
+  const state = readState(request);
+
   try {
-    return Response.json(await getFeed(), { headers: NO_STORE });
+    return Response.json(await getFeed(state), {
+      headers: NO_STORE,
+    });
   } catch (error) {
     console.error("GET /feed failed", error);
     return Response.json(
@@ -19,10 +35,12 @@ export async function handleFeed(): Promise<Response> {
   }
 }
 
-export async function handleMatches(): Promise<Response> {
+export async function handleMatches(request: Request): Promise<Response> {
+  const state = readState(request);
+
   try {
     return Response.json(
-      { matches: await getMatches() },
+      { matches: await getMatches(state) },
       { headers: NO_STORE },
     );
   } catch (error) {
@@ -72,8 +90,16 @@ export async function handleSwipe(request: Request): Promise<Response> {
   }
 
   try {
-    const result = await recordSwipe(profileId, direction);
-    return Response.json(result, { headers: NO_STORE });
+    const { state, result } = await recordSwipe(
+      readState(request),
+      profileId,
+      direction,
+    );
+    return withStateCookie(
+      Response.json(result, { headers: NO_STORE }),
+      state,
+      request,
+    );
   } catch (error) {
     if (error instanceof HttpError) {
       return Response.json(

@@ -13,6 +13,10 @@ Responses are JSON and sent with `Cache-Control: no-store` so a feed is never se
 cache. The service worker also excludes `/api/*`, `/feed`, `/swipe`, and `/matches` from every
 cache, so these responses always come from the network.
 
+Swipe state is scoped to the caller's browser through an HTTP-only `coy_state` cookie. A successful
+`POST /swipe` returns the updated state in `Set-Cookie`; `GET /feed` and `GET /matches` read it.
+Without a cookie (for example a fresh curl session) the user starts with the full deck.
+
 Base URL (development): `http://localhost:3000`
 
 Error shape:
@@ -57,16 +61,17 @@ flag is never included.
 
 **Errors**
 
-| Status | When                                     |
-| ------ | ---------------------------------------- |
-| `500`  | `data/profiles.json` / `data/store.json` unreadable or invalid. |
+| Status | When                                                          |
+| ------ | ------------------------------------------------------------- |
+| `500`  | `data/profiles.json` is unreadable or invalid.                |
 
 ---
 
 ## `POST /swipe` (alias `POST /api/swipe`)
 
 Records a like or pass. Idempotent: repeating the same swipe returns the stored outcome and sets
-`alreadySwiped: true` instead of creating a duplicate match.
+`alreadySwiped: true` instead of creating a duplicate match. The response includes a `Set-Cookie`
+header with the updated `coy_state` value; later requests must send that cookie back.
 
 **Request body**
 
@@ -126,7 +131,7 @@ Records a like or pass. Idempotent: repeating the same swipe returns the stored 
 | `400`  | `{ "error": "`profileId` is required" }`         | Missing/empty/non-string `profileId`.     |
 | `400`  | `{ "error": "`direction` must be \"like\" or \"pass\"" }` | Invalid direction.                |
 | `404`  | `{ "error": "Profile not found" }`               | Unknown `profileId`.                      |
-| `500`  | `{ "error": "Failed to record swipe" }`          | Store read/write failure.                 |
+| `500`  | `{ "error": "Failed to record swipe" }`          | Unexpected server failure.                |
 
 ---
 
@@ -164,7 +169,7 @@ already liked the user appear here.
 
 | Status | When                                             |
 | ------ | ------------------------------------------------ |
-| `500`  | Store unreadable / invalid.                      |
+| `500`  | `data/profiles.json` is unreadable or invalid.   |
 
 ---
 
@@ -176,14 +181,20 @@ already liked the user appear here.
 | `400` | Malformed request body / invalid fields.                       |
 | `404` | Unknown profile id.                                            |
 | `405` | Wrong HTTP method (handled by Next.js).                        |
-| `500` | Data file missing, unreadable, or a write failed.              |
+| `500` | Seed data missing/unreadable or an unexpected server failure.  |
 
 ## Manual smoke test
 
 ```bash
+# Feed before swiping (no cookie → full deck)
 curl -s localhost:3000/feed | head -c 300
-curl -s -X POST localhost:3000/swipe \
+
+# Like Maya and keep the returned coy_state cookie
+curl -s -c cookies.txt -b cookies.txt -X POST localhost:3000/swipe \
   -H 'content-type: application/json' \
   -d '{"profileId":"p01","direction":"like"}'
-curl -s localhost:3000/matches
+
+# The same browser now sees 35 profiles and one match
+curl -s -b cookies.txt localhost:3000/feed
+curl -s -b cookies.txt localhost:3000/matches
 ```

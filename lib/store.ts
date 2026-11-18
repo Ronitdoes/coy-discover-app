@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import type {
@@ -10,30 +10,34 @@ import type {
   SwipeSuccess,
 } from "@/lib/types";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const PROFILES_PATH = path.join(DATA_DIR, "profiles.json");
-const STORE_PATH = path.join(DATA_DIR, "store.json");
-const TEMP_STORE_PATH = `${STORE_PATH}.tmp`;
+const PROFILES_PATH = path.join(process.cwd(), "data", "profiles.json");
+
+/**
+ * Runtime state lives in an HTTP-only cookie instead of a file. Serverless
+ * hosts such as Vercel expose a read-only filesystem, so a file write would
+ * fail on every swipe. A cookie keeps the demo working there without adding a
+ * database, while still persisting across reloads and server instances.
+ */
+export const STATE_COOKIE = "coy_state";
+const STATE_VERSION = 1;
+const STATE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
 interface SwipeRecord {
   direction: SwipeDirection;
   at: string;
 }
 
-interface MatchRecord {
-  id: string;
-  profileId: string;
-  matchedAt: string;
+export interface StoreState {
+  swipes: Record<string, SwipeRecord>;
 }
 
-interface StoreState {
-  version: number;
-  swipes: Record<string, SwipeRecord>;
-  matches: MatchRecord[];
+interface SerializedState {
+  v: typeof STATE_VERSION;
+  swipes: Record<string, [SwipeDirection, string]>;
 }
 
 function emptyState(): StoreState {
-  return { version: 1, swipes: {}, matches: [] };
+  return { swipes: Object.create(null) as Record<string, SwipeRecord> };
 }
 
 /** Error carrying an HTTP status, translated by the route handlers. */
@@ -48,6 +52,117 @@ export class HttpError extends Error {
 }
 
 // ---------------------------------------------------------------------------
+// Cookie state
+// ---------------------------------------------------------------------------
+
+function readCookie(header: string | null, name: string): string | null {
+  if (!header) return null;
+
+  for (const part of header.split(";")) {
+    const separator = part.indexOf("=");
+    if (separator === -1) continue;
+    if (part.slice(0, separator).trim() === name) {
+      return part.slice(separator + 1).trim();
+    }
+  }
+
+  return null;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isProfileId(value: string): boolean {
+  return /^[A-Za-z0-9_-]{1,64}$/.test(value);
+}
+
+function isTimestamp(value: string): boolean {
+  const time = Date.parse(value);
+  return Number.isFinite(time) && new Date(time).toISOString() === value;
+}
+
+/**
+ * Reads the swipes encoded in the request cookie. A missing, malformed, or
+ * tampered cookie simply starts from an empty state; it can never make an API
+ * request fail.
+ */
+export function readState(request: Request): StoreState {
+  const value = readCookie(request.headers.get("cookie"), STATE_COOKIE);
+  if (!value) return emptyState();
+
+  try {
+    const decoded = Buffer.from(value, "base64url").toString("utf8");
+    const parsed: unknown = JSON.parse(decoded);
+
+    if (
+      !isObject(parsed) ||
+      parsed.v !== STATE_VERSION ||
+      !isObject(parsed.swipes)
+    ) {
+      return emptyState();
+    }
+
+    const swipes = Object.create(null) as Record<string, SwipeRecord>;
+    for (const [profileId, entry] of Object.entries(parsed.swipes)) {
+      if (!isProfileId(profileId) || !Array.isArray(entry) || entry.length !== 2) {
+        continue;
+      }
+
+      const [direction, at] = entry;
+      if (direction !== "like" && direction !== "pass") continue;
+      if (typeof at !== "string" || !isTimestamp(at)) continue;
+
+      swipes[profileId] = { direction, at };
+    }
+
+    return { swipes };
+  } catch {
+    return emptyState();
+  }
+}
+
+function encodeState(state: StoreState): string {
+  const swipes: SerializedState["swipes"] = Object.create(null) as Record<
+    string,
+    [SwipeDirection, string]
+  >;
+
+  for (const [profileId, record] of Object.entries(state.swipes)) {
+    swipes[profileId] = [record.direction, record.at];
+  }
+
+  const serialized: SerializedState = { v: STATE_VERSION, swipes };
+  return Buffer.from(JSON.stringify(serialized), "utf8").toString("base64url");
+}
+
+/**
+ * Adds the updated swipe state to an outgoing response. `Secure` is only set
+ * over HTTPS so the cookie also works on http://localhost during development.
+ */
+export function withStateCookie(
+  response: Response,
+  state: StoreState,
+  request: Request,
+): Response {
+  const forwardedProto = request.headers
+    .get("x-forwarded-proto")
+    ?.split(",")[0]
+    ?.trim();
+  const secure =
+    forwardedProto === "https" || request.url.startsWith("https://");
+
+  response.headers.append(
+    "Set-Cookie",
+    `${STATE_COOKIE}=${encodeState(state)}; Path=/; Max-Age=${STATE_COOKIE_MAX_AGE}; HttpOnly; SameSite=Lax${
+      secure ? "; Secure" : ""
+    }`,
+  );
+
+  return response;
+}
+
+// ---------------------------------------------------------------------------
 // Reads
 // ---------------------------------------------------------------------------
 
@@ -58,89 +173,6 @@ async function loadProfiles(): Promise<SeedProfile[]> {
     throw new Error("data/profiles.json must contain an array of profiles");
   }
   return parsed as SeedProfile[];
-}
-
-async function readStore(): Promise<StoreState> {
-  let raw: string;
-  try {
-    raw = await readFile(STORE_PATH, "utf8");
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      // First run: nothing has been swiped yet.
-      return emptyState();
-    }
-    throw error;
-  }
-
-  let parsed: Partial<StoreState>;
-  try {
-    parsed = JSON.parse(raw) as Partial<StoreState>;
-  } catch {
-    throw new Error(
-      "data/store.json is not valid JSON. Delete it to reset the demo state.",
-    );
-  }
-
-  return {
-    version: 1,
-    swipes:
-      parsed.swipes && typeof parsed.swipes === "object" ? parsed.swipes : {},
-    matches: Array.isArray(parsed.matches) ? parsed.matches : [],
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Writes
-// ---------------------------------------------------------------------------
-
-async function replaceFile(from: string, to: string): Promise<void> {
-  // Windows can transiently reject a rename while another process (an editor,
-  // an antivirus scanner, or the dev server's watcher) holds the destination
-  // open. A short backoff keeps the atomic swap reliable without hiding a
-  // genuine permission error.
-  for (let attempt = 0; ; attempt += 1) {
-    try {
-      await rename(from, to);
-      return;
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      const transient =
-        code === "EPERM" || code === "EBUSY" || code === "EACCES";
-      if (!transient || attempt >= 4) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 20 * 2 ** attempt));
-    }
-  }
-}
-
-async function writeStore(state: StoreState): Promise<void> {
-  await mkdir(DATA_DIR, { recursive: true });
-  // Write to a temp file first, then atomically swap it in so a crash or a
-  // concurrent reader never observes a half-written store.
-  await writeFile(TEMP_STORE_PATH, `${JSON.stringify(state, null, 2)}\n`, "utf8");
-  await replaceFile(TEMP_STORE_PATH, STORE_PATH);
-}
-
-let writeQueue: Promise<void> = Promise.resolve();
-
-/**
- * Serialised read-modify-write. Every mutation waits for the previous one, so
- * concurrent requests cannot clobber each other's swipes.
- */
-function mutate<T>(updater: (state: StoreState) => T): Promise<T> {
-  const run = writeQueue.then(async () => {
-    const state = await readStore();
-    const result = updater(state);
-    await writeStore(state);
-    return result;
-  });
-
-  // Keep the chain alive even if this run rejects.
-  writeQueue = run.then(
-    () => undefined,
-    () => undefined,
-  );
-
-  return run;
 }
 
 // ---------------------------------------------------------------------------
@@ -161,11 +193,15 @@ function toPublicProfile(profile: SeedProfile): Profile {
   };
 }
 
-function toMatch(record: MatchRecord, profile: SeedProfile): Match {
+function isMutual(profile: SeedProfile, swipe: SwipeRecord): boolean {
+  return swipe.direction === "like" && profile.likedYou;
+}
+
+function toMatch(profile: SeedProfile, swipe: SwipeRecord): Match {
   return {
-    id: record.id,
+    id: `match_${profile.id}_${new Date(swipe.at).getTime().toString(36)}`,
     profile: toPublicProfile(profile),
-    matchedAt: record.matchedAt,
+    matchedAt: swipe.at,
   };
 }
 
@@ -173,8 +209,8 @@ function toMatch(record: MatchRecord, profile: SeedProfile): Match {
 // Public API (called by route handlers)
 // ---------------------------------------------------------------------------
 
-export async function getFeed(): Promise<FeedResponse> {
-  const [profiles, state] = await Promise.all([loadProfiles(), readStore()]);
+export async function getFeed(state: StoreState): Promise<FeedResponse> {
+  const profiles = await loadProfiles();
   const remaining = profiles.filter((profile) => !state.swipes[profile.id]);
 
   return {
@@ -185,61 +221,57 @@ export async function getFeed(): Promise<FeedResponse> {
 }
 
 export async function recordSwipe(
+  state: StoreState,
   profileId: string,
   direction: SwipeDirection,
-): Promise<SwipeSuccess> {
+): Promise<{ state: StoreState; result: SwipeSuccess }> {
   const profiles = await loadProfiles();
   const profile = profiles.find((candidate) => candidate.id === profileId);
   if (!profile) {
     throw new HttpError(404, "Profile not found");
   }
 
-  return mutate((state) => {
-    const existing = state.swipes[profileId];
-    if (existing) {
-      const matchRecord = state.matches.find(
-        (record) => record.profileId === profileId,
-      );
-      const match = matchRecord ? toMatch(matchRecord, profile) : undefined;
-      return {
-        ok: true as const,
+  const existing = state.swipes[profileId];
+  if (existing) {
+    const matched = isMutual(profile, existing);
+    return {
+      state,
+      result: {
+        ok: true,
         direction: existing.direction,
-        matched: Boolean(match),
-        ...(match ? { match } : {}),
+        matched,
+        ...(matched ? { match: toMatch(profile, existing) } : {}),
         alreadySwiped: true,
-      };
-    }
+      },
+    };
+  }
 
-    const now = new Date().toISOString();
-    state.swipes[profileId] = { direction, at: now };
+  const swipe: SwipeRecord = { direction, at: new Date().toISOString() };
+  const nextState: StoreState = {
+    swipes: { ...state.swipes, [profileId]: swipe },
+  };
+  const matched = isMutual(profile, swipe);
 
-    if (direction === "like" && profile.likedYou) {
-      const matchRecord: MatchRecord = {
-        id: `match_${profileId}_${Date.now().toString(36)}`,
-        profileId,
-        matchedAt: now,
-      };
-      state.matches.push(matchRecord);
-      return {
-        ok: true as const,
-        direction,
-        matched: true,
-        match: toMatch(matchRecord, profile),
-      };
-    }
-
-    return { ok: true as const, direction, matched: false };
-  });
+  return {
+    state: nextState,
+    result: {
+      ok: true,
+      direction,
+      matched,
+      ...(matched ? { match: toMatch(profile, swipe) } : {}),
+    },
+  };
 }
 
-export async function getMatches(): Promise<Match[]> {
-  const [profiles, state] = await Promise.all([loadProfiles(), readStore()]);
-  const profilesById = new Map(profiles.map((profile) => [profile.id, profile]));
+export async function getMatches(state: StoreState): Promise<Match[]> {
+  const profiles = await loadProfiles();
 
-  return state.matches
-    .flatMap((record) => {
-      const profile = profilesById.get(record.profileId);
-      return profile ? [toMatch(record, profile)] : [];
+  return profiles
+    .flatMap((profile) => {
+      const swipe = state.swipes[profile.id];
+      return swipe && isMutual(profile, swipe)
+        ? [toMatch(profile, swipe)]
+        : [];
     })
     .sort((a, b) => b.matchedAt.localeCompare(a.matchedAt));
 }

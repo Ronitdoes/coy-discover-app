@@ -1,5 +1,5 @@
 import { handleMatches } from "@/lib/api";
 
-export async function GET() {
-  return handleMatches();
+export async function GET(request: Request) {
+  return handleMatches(request);
 }

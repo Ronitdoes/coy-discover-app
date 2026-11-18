@@ -57,7 +57,7 @@ drops; the API itself always requires a connection.
 | Some profiles already liked the user         | `likedYou` flag in `data/profiles.json` (10 of 36) |
 | One card at a time, drag + buttons           | `components/discover/swipe-deck.tsx`, `swipe-card.tsx` |
 | Smooth animations and clear feedback         | Pointer-event drag, spring-back, fly-out ghosts, LIKE/NOPE stamps (`app/globals.css`) |
-| Swiped profiles never reappear               | `state.swipes` in `data/store.json`; `/feed` filters them out |
+| Swiped profiles never reappear               | `state.swipes` in the `coy_state` cookie; `/feed` filters them out |
 | Empty state when no profiles remain          | `EmptyState` in `discover-tab.tsx` |
 | Match only when both liked each other        | `recordSwipe()` in `lib/store.ts` |
 | "It's a match!" screen at that moment        | `match-overlay.tsx`, driven by the `POST /swipe` response |
@@ -66,7 +66,7 @@ drops; the API itself always requires a connection.
 | `GET /feed`                                  | `app/feed/route.ts` |
 | `POST /swipe`                                | `app/swipe/route.ts` |
 | `GET /matches`                               | `app/matches/route.ts` |
-| Persistence across reloads                   | JSON file store with atomic writes (`lib/store.ts`) |
+| Persistence across reloads                   | HTTP-only cookie state with a `Set-Cookie` update per swipe (`lib/store.ts`) |
 | First-visit onboarding, remembered            | `components/onboarding/*`, `coy:onboarding-complete` in `localStorage` (`app-shell.tsx`) |
 | Installable PWA                              | `app/manifest.ts`, `public/icons/*`, `components/install/*`, `components/pwa-register.tsx` |
 | Offline shell + fallback                     | `public/sw.js`, `app/offline/page.tsx`, `components/offline-retry-button.tsx` |
@@ -80,7 +80,7 @@ drops; the API itself always requires a connection.
 | Framework  | **Next.js 16 (App Router) + React 19 + TypeScript** | One repo for UI and API (Route Handlers), no separate Express server to run or deploy. |
 | Styling    | **Tailwind CSS v4** | Mobile-first utilities, no runtime CSS-in-JS cost. |
 | Server     | **Next.js Route Handlers** (`app/api/**/route.ts`) | Request/response API with zero extra infrastructure; supports streaming, `Request`/`Response`. |
-| Data       | **JSON files** (`data/profiles.json`, `data/store.json`) | Explicitly allowed by the brief; zero setup, inspectable, and easy to reset for demos. |
+| Data       | **JSON seed + HTTP-only cookie** (`data/profiles.json`, `coy_state`) | Zero setup, works on read-only serverless filesystems, and the seed stays inspectable. |
 | Gestures   | **Pointer Events + CSS transforms** (no library) | One code path for touch, pen, and mouse; avoids a ~50 kB animation dependency. |
 | PWA        | **Web App Manifest + hand-written Service Worker** | Installability and an offline shell with no Workbox/next-pwa dependency; the cache policy is small enough to own explicitly. |
 | Icons      | Inline SVG components | No icon package needed. |
@@ -122,11 +122,11 @@ No runtime dependencies were added — the app builds on `next`/`react` only.
 │  GET  /matches  → store.getMatches()   → { matches: [...] }                     │
 │                                                                                     │
 └───────────────▲─────────────────────────────────────────────────────────────────────┘
-                │ node:fs/promises (atomic write: tmp + rename with retry, serialized queue)
+                │ HTTP-only cookie: read on every request, `Set-Cookie` after a swipe
 ┌───────────────┴─────────────────────────────────────────────────────────────────────┐
-│ Data files                                                                          │
+│ Data                                                                                │
 │  data/profiles.json  → 36 seed profiles (incl. likedYou, never sent until mutual)   │
-│  data/store.json     → { version, swipes, matches }  (gitignored, created on write) │
+│  coy_state cookie    → swipes only; matches are derived from likes + likedYou       │
 └─────────────────────────────────────────────────────────────────────────────────────┘
 
 Service worker (public/sw.js)
@@ -144,7 +144,7 @@ mirrored under `/api/*` (`/api/feed`, `/api/swipe`, `/api/matches`) for convenie
 **Feed**
 
 ```
-DiscoverTab mounts → GET /feed → profiles without a recorded swipe, likedYou stripped
+DiscoverTab mounts → GET /feed → cookie decoded → profiles without a recorded swipe, likedYou stripped
 ```
 
 **Swipe**
@@ -153,8 +153,8 @@ DiscoverTab mounts → GET /feed → profiles without a recorded swipe, likedYou
 Drag release / button / arrow key
   → SwipeDeck animates a ghost card out (300 ms)
   → POST /swipe { profileId, direction }
-  → store.recordSwipe(): write swipe; if direction === "like" && profile.likedYou → create match
-  → response { matched, match? }
+  → store.recordSwipe(): update the swipe map; if direction === "like" && profile.likedYou → match
+  → response { matched, match? } + Set-Cookie with the updated state
   → DiscoverTab removes the card optimistically; if matched → MatchOverlay
   → if the request fails → card is put back and an error is shown
 ```
@@ -162,7 +162,7 @@ Drag release / button / arrow key
 **Matches**
 
 ```
-DiscoverTab loads GET /matches on mount; the header badge and MatchesView read that state
+DiscoverTab loads GET /matches on mount; matches are derived from likes in the cookie
 ```
 
 **Onboarding**
@@ -233,18 +233,22 @@ interface Profile {
 }
 ```
 
-### Runtime state — `data/store.json`
+### Runtime state — `coy_state` cookie
+
+The swipes are serialized as compact JSON, base64url-encoded, and stored in an HTTP-only cookie.
+Matches are **derived** from the swipes, so they never need to be stored separately.
 
 ```ts
 interface StoreState {
-  version: 1;
   swipes: Record<string, { direction: "like" | "pass"; at: string }>;
-  matches: Array<{ id: string; profileId: string; matchedAt: string }>;
 }
 ```
 
-The store file is created lazily on the first write and is gitignored. Delete it to reset the
-demo (see README).
+The cookie is written with `Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax` (plus `Secure` over
+HTTPS). A malformed or tampered cookie falls back to an empty state. With all 36 profiles swiped,
+the encoded value is roughly 2 KB, comfortably below the 4 KB browser cookie limit.
+
+Clear site data (or the cookie) to reset the demo (see README).
 
 ---
 
@@ -425,15 +429,16 @@ background sync and no offline swipe queue — mutations are deliberately not ca
 
 ## 11. Persistence and concurrency
 
-- Every request reads `data/store.json` from disk — there is no in-memory cache, so a dev-server
-  restart or an external edit is always reflected.
-- Writes go through `mutate()`, which serialises read-modify-write cycles on a promise queue and
-  then persists atomically: write `store.json.tmp`, then `rename()` over `store.json`. This
-  prevents interleaved requests from losing a swipe.
-- On Windows, a rename can be transiently rejected while another process holds the destination
-  open, so `replaceFile()` retries `EPERM`/`EBUSY`/`EACCES` with a short backoff before surfacing
-  the error.
-- `data/profiles.json` is read per request as well, so editing seed data takes effect on reload.
+- Swipe state is held in an HTTP-only cookie scoped to the browser. Each request decodes it to a
+  fresh `StoreState`; `POST /swipe` returns the updated state in a `Set-Cookie` header.
+- There is no server-side mutable storage, so requests are independent and safe to serve from any
+  serverless instance. A browser's cookie is the single source of truth for that demo user.
+- Two swipes fired concurrently from the same browser can race at the cookie level: the last
+  response to arrive wins. The UI sends one swipe at a time, and repeated swipes are idempotent, so
+  this is acceptable for the demo.
+- `data/profiles.json` is read per request, so editing seed data takes effect on reload.
+- Vercel and similar hosts expose a read-only filesystem outside `/tmp`; the cookie store avoids
+  that failure mode without adding a database or environment variables.
 
 ---
 
@@ -481,10 +486,9 @@ lib/
   types.ts                   # shared request/response types
   current-user.ts            # the single logged-in user
   api.ts                     # shared route-handler bodies (canonical + /api aliases)
-  store.ts                   # JSON store: feed, swipe, matches, atomic writes
+  store.ts                   # profiles + cookie state, match engine
 data/
   profiles.json              # 36 seed profiles
-  store.json                 # runtime state (gitignored)
 public/
   sw.js                      # versioned service worker
   icons/                     # 192/512 + maskable PWA icons
@@ -502,13 +506,13 @@ docs/
 | Decision | Alternative considered | Why this one |
 | -------- | ---------------------- | ------------ |
 | Next.js Route Handlers instead of Express | Separate Express server | One deployable, one language, no CORS/proxy setup; the brief allows either. |
-| JSON file store instead of SQLite | SQLite / Postgres | Zero native deps, trivially inspectable and resettable; the dataset is tiny and single-process. |
+| HTTP-only cookie store instead of JSON files | JSON/SQLite file store, Vercel KV/Blob | Serverless hosts have a read-only filesystem, which caused `POST /swipe` to return 500 on Vercel. A cookie persists per browser with zero setup or extra services. |
 | Client-side fetching instead of Server Components | RSC initial data | The deck is highly interactive and mutates constantly; a client-owned cache keeps one source of truth and avoids a server round-trip per swipe. |
 | Pointer Events + CSS instead of Framer Motion | `motion` / `react-spring` | Full control over the drag → fly-out handoff, no bundle cost, no extra dependency. |
 | Optimistic swipe with rollback | Wait for the server before advancing | Swiping must feel instant; the card is restored and an error shown if the write fails. |
 | Feed returns all remaining profiles | Paginated feed | 36 profiles is tiny; the client owns the deck order and can animate the stack without extra requests. |
 | `likedYou` stripped by an explicit mapper | `delete profile.likedYou` | A rest-spread would silently start leaking the field if the seed type changes. |
-| Reset via deleting `data/store.json` (no reset API) | A `POST /api/reset` button | The brief requires that a swiped profile never reappears; a reset endpoint would undermine that promise in the UI. |
+| Reset via clearing the `coy_state` cookie (no reset API) | A `POST /api/reset` button | The brief requires that a swiped profile never reappears; a reset endpoint would undermine that promise in the UI. |
 | First-visit onboarding flag in `localStorage` | A server-side flag / database column | There is no auth or user record; the intro is a client concern and a server round-trip would add a loading state for no product value. |
 | Hand-written service worker | `next-pwa` / Workbox | The app has one page and a handful of cache rules; owning ~100 lines avoids a build dependency and keeps the API-exclusion rule explicit. |
 | Network-first navigations | Cache-first app shell | Prevents a stale deployed shell from sticking around; the cached copy is only a fallback. |
@@ -533,17 +537,19 @@ bun dev            # http://localhost:3000
 6. Run a production build and install the app, or go offline and reload, to exercise the service
    worker and `/offline` fallback.
 
-To reset the demo state, stop the server and delete `data/store.json`. To replay onboarding, run
-`localStorage.removeItem("coy:onboarding-complete")` in the browser console and reload.
+To reset the demo state, clear the `coy_state` cookie (DevTools → Application → Cookies), or run
+`document.cookie = "coy_state=; Max-Age=0; path=/"` in the console. To replay onboarding, run
+`localStorage.removeItem("coy:onboarding-complete")` and reload.
 
 ---
 
 ## 15. Limitations and future work
 
-- **Single process only.** The promise-queue write serialisation is per Node process; a multi-instance
-  deployment would need SQLite/Postgres with a uniqueness constraint on `(profile_id)`.
-- **File-system storage.** Serverless hosts with read-only file systems need an external database.
-- **No auth.** `lib/current-user.ts` hard-codes the single user.
+- **Per-browser state.** Swipes live in an HTTP-only cookie, so they are scoped to one browser and
+  cleared with site data. Different browsers or devices start from a fresh deck. A production
+  version needs auth plus a database with a uniqueness constraint on `(user_id, profile_id)`.
+- **No auth.** `lib/current-user.ts` hard-codes the single user. Treat the cookie as demo state, not
+  as a security boundary; a client can edit its own swipe history.
 - **No chat / unmatch / undo.** Deliberately out of scope.
 - **PWA caveats.** Install prompts need HTTPS (or `localhost`) and a production build. The service
   worker caches the shell/assets only: swipes are not queued offline, there is no background sync

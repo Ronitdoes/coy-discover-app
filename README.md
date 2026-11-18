@@ -2,7 +2,7 @@
 
 A mobile-first, swipe-to-match experience built with **Next.js 16, React 19, TypeScript, and
 Tailwind CSS v4**. It is a complete, installable PWA with an onboarding screen, a draggable card
-deck, mutual-only matches, an offline shell, and a small JSON-backed API.
+deck, mutual-only matches, an offline shell, and a small API with per-browser state.
 
 <p align="center">
   <img src="docs/screenshots/discover.png" width="320" alt="Coy Discover showing a profile card for Maya, 26, with Pass and Like buttons" />
@@ -31,7 +31,7 @@ deck, mutual-only matches, an offline shell, and a small JSON-backed API.
 | **No repeats** | Every swipe is persisted; `GET /feed` filters out anyone already swiped. |
 | **PWA install** | Web app manifest, maskable icons, and an in-app install banner. Uses the native Chromium prompt and clear iOS/Safari/Firefox guidance. Hidden when already installed. |
 | **Offline shell** | A versioned service worker caches the app shell, photos, and icons, and never caches the API. Discover detects an offline feed and retries automatically when the connection returns. |
-| **Persistence** | Swipes and matches live in `data/store.json` with serialized, atomic writes that survive reloads and restarts. |
+| **Persistence** | Swipes live in an HTTP-only cookie and matches are derived from them, so reloads, restarts, and read-only serverless hosts keep your place. |
 | **Accessibility** | Labelled controls, focus-managed dialog, keyboard swiping, `aria-live` feedback, and `prefers-reduced-motion` support. |
 
 ## Screenshots
@@ -82,7 +82,7 @@ Captured from the production build in a 390 × 844 mobile viewport.
 | Language | TypeScript 5 |
 | Styling | Tailwind CSS v4.3 via `@tailwindcss/turbopack` |
 | API | Next.js Route Handlers at `/feed`, `/swipe`, `/matches` (plus `/api/*` aliases) |
-| Storage | `data/profiles.json` + `data/store.json` through `node:fs/promises` |
+| Storage | `data/profiles.json` seeds + an HTTP-only `coy_state` cookie for swipes |
 | Gestures | Pointer Events + CSS transforms (no animation library) |
 | PWA | Web App Manifest + a hand-written service worker (no Workbox dependency) |
 | Fonts / icons | Figtree via `next/font`, inline SVG icons |
@@ -132,15 +132,20 @@ bun run lint      # eslint
 
 ### Reset the demo
 
-```bash
-# Swipes + matches (stop the dev server first)
-rm data/store.json                 # macOS / Linux / Git Bash
-# del data\store.json              # Windows cmd
+Swipes are stored in an HTTP-only `coy_state` cookie, scoped to the browser. Clear it from
+**DevTools → Application → Cookies**, or run this in the browser console:
 
-# Replay onboarding in the browser console
+```js
+// Reset swipes and matches
+document.cookie = "coy_state=; Max-Age=0; path=/";
+
+// Replay onboarding
 localStorage.removeItem("coy:onboarding-complete");
 location.reload();
 ```
+
+The old file-backed demo state in `data/store.json` is no longer read; you can delete it if it
+exists locally.
 
 If a service-worker update looks stale during development, use **DevTools → Application → Clear
 storage** (or “Update on reload”), then reload.
@@ -154,6 +159,7 @@ storage** (or “Update on reload”), then reload.
 | `GET` | `/matches` (alias `/api/matches`) | Mutual matches, newest first — `{ matches }`. |
 
 All responses use `Cache-Control: no-store`, and the service worker never caches API requests.
+Swipe state is scoped to the caller's `coy_state` cookie; use a cookie jar when testing with curl.
 Full request/response reference: [`docs/API.md`](docs/API.md).
 
 ## How it works
@@ -169,9 +175,10 @@ DiscoverTab (client)
   └── MatchesView → GET data already in client state
 ```
 
-Server-side, a serialized read-modify-write queue persists swipes and matches with a temp-file +
-rename swap. A match is created only when `direction === "like" && profile.likedYou`. The public
-profile mapper rebuilds each profile field by field, so the seed-only `likedYou` flag cannot leak.
+Server-side, each request decodes the swipe state from an HTTP-only cookie and returns an updated
+`Set-Cookie` after a swipe. A match exists only when the user liked a profile whose seed record has
+`likedYou: true`; matches are derived from the stored swipes, newest first. The public profile
+mapper rebuilds each profile field by field, so the seed-only `likedYou` flag cannot leak.
 
 For the full system diagram, data model, matching rules, gesture thresholds, brand tokens, PWA
 cache policy, trade-offs, and limitations, see
@@ -198,11 +205,10 @@ components/
   pwa-register.tsx               # service-worker registration
   offline-retry-button.tsx
 lib/
-  store.ts                       # JSON store, match engine, atomic writes
+  store.ts                       # profiles, cookie state, match engine
   types.ts · api.ts · current-user.ts
 data/
   profiles.json                  # 36 seed profiles
-  store.json                     # runtime swipes/matches (gitignored)
 public/
   sw.js                          # versioned offline service worker
   icons/                         # 192/512 + maskable PWA icons
@@ -227,9 +233,10 @@ and centered on larger screens so the mobile composition stays intact. Reusable 
 
 - **Single user, no auth.** `lib/current-user.ts` hard-codes the logged-in user. There is no chat,
   unmatch, undo, photo upload, or real-time multi-user sync.
-- **Local JSON storage.** The store is single-process and file-based, which is ideal for a demo but
-  not for a multi-instance deployment. A production version needs a database with a uniqueness
-  constraint per profile.
+- **Per-browser cookie state.** Swipes are stored in an HTTP-only `coy_state` cookie (about 2 KB
+  with all 36 profiles swiped), not a shared database. State survives reloads, restarts, and
+  read-only serverless hosts, but is scoped to one browser and is cleared with site data. A
+  production version needs auth plus a database with a uniqueness constraint per profile.
 - **Service worker scope.** The PWA caches the shell, photos, and icons only. Swipes are not queued
   offline; the feed shows an offline error state and retries when connectivity returns.
 - **Manual cache versioning.** Bump `VERSION` in `public/sw.js` when changing caching rules so old
